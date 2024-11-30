@@ -1,0 +1,1 @@
+/home/user/Kernel/submit_v6.6/x86_64/scripts/gdb/vmlinux-gdb.py
