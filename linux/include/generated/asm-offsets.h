@@ -80,8 +80,7 @@
 #define TSS_sp0 4 /* offsetof(struct tss_struct, x86_tss.sp0) */
 #define TSS_sp1 12 /* offsetof(struct tss_struct, x86_tss.sp1) */
 #define TSS_sp2 20 /* offsetof(struct tss_struct, x86_tss.sp2) */
-#define X86_top_of_stack 24 /* offsetof(struct pcpu_hot, top_of_stack) */
+#define X86_top_of_stack 16 /* offsetof(struct pcpu_hot, top_of_stack) */
 #define X86_current_task 0 /* offsetof(struct pcpu_hot, current_task) */
-#define X86_call_depth 16 /* offsetof(struct pcpu_hot, call_depth) */
 
 #endif

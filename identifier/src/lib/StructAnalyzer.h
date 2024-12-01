@@ -333,7 +333,7 @@ public:
 		siteInfo.dumpTo();
 	}
 
-    const string JsonDir = "/home/user/Tools/w2l/code/out/defdebug/dumpResults/";
+    const string JsonDir = "./output/identifier/";
 
 	void dumpLeakInfo(bool dumpAllocable){
 

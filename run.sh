@@ -10,7 +10,10 @@ HOME=$(pwd)
 
 run_identifier() {
     echo -e "${BLUE}==> Running identifier tool...${NC}"
-    # TODO:
+    mkdir $HOME/output
+    cd identifier && make
+    cd $HOME && ln -s identifier/build/lib/analyzer identifier-tool
+    ./identifier-tool -debug-verbose 0 -dump-leakers `find $HOME/linux -name "*\.bc"` 2> $HOME/output/identifier
     echo -e "${GREEN}Identifier tool execution completed.${NC}"
 }
 
