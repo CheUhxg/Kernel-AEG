@@ -34,7 +34,7 @@
 #include "PointerAnalysis.h"
 #include "AllocAnalyzer.h"
 #include "CopyAnalyzer.h"
-#include "LeakerChecker.h"
+#include "StructChecker.h"
 #include "PermissionAnalysis.h"
 
 using namespace llvm;
@@ -46,13 +46,13 @@ cl::opt<unsigned> VerboseLevel(
     "debug-verbose", cl::desc("Print information about actions taken"),
     cl::init(0));
 
-cl::opt<bool> DumpLeakers(
+cl::opt<bool> DumpKeyStructs(
     "dump-leakers", cl::desc("Dump leakers"), cl::NotHidden, cl::init(false));
 
 cl::opt<bool> DumpFlexibleStruts(
     "dump-flexible-st", cl::desc("Dump flexible st"), cl::NotHidden, cl::init(false));
 
-cl::opt<bool> AnalyzeLeakers(
+cl::opt<bool> AnalyzeKeyStructs(
     "check-leakers", cl::desc("Analyze leakers"), cl::NotHidden, cl::init(false));
 
 cl::opt<bool> DumpAlias(
@@ -205,17 +205,17 @@ int main(int argc, char **argv) {
         PAPass.dumpAlias();
     }
     
-    if (DumpLeakers) {
+    if (DumpKeyStructs) {
         AllocAnalyzerPass AAPass(&GlobalCtx);
         AAPass.run(GlobalCtx.Modules);
 
         CopyAnalyzerPass CAPass(&GlobalCtx);
         CAPass.run(GlobalCtx.Modules);
-        CAPass.dumpLeakers();
+        CAPass.dumpKeyStructs();
     }
 
-    if (AnalyzeLeakers) {
-        LeakerCheckerPass LCPass(&GlobalCtx);
+    if (AnalyzeKeyStructs) {
+        StructCheckerPass LCPass(&GlobalCtx);
         LCPass.run(GlobalCtx.Modules);
         LCPass.dumpChecks();
     }
@@ -223,7 +223,6 @@ int main(int argc, char **argv) {
     if (DumpSimplified) {
         AllocAnalyzerPass AAPass(&GlobalCtx);
         AAPass.run(GlobalCtx.Modules);
-        AAPass.dumpSimplifiedLeakers();
     }
 
     if (DumpFlexibleStruts) {

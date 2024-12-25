@@ -11,7 +11,7 @@
 #include <set>
 
 
-class LeakerCheckerPass : public IterativeModulePass {
+class StructCheckerPass : public IterativeModulePass {
 private:
 
     typedef llvm::DenseMap<llvm::Value*, unsigned> SliceMap;
@@ -24,7 +24,7 @@ private:
     void interpretSlice2Checks(SliceMap&, StructInfo::CheckMap&, StructInfo*);
 
     void interpretICmp(llvm::ICmpInst*);
-    void loadHardCodedLeaker();
+    void loadHardCodedKeyStruct();
 
     SmallPtrSet<Value*, 16> getAliasSet(Value* V, Function* F);
 
@@ -56,8 +56,8 @@ private:
         unsigned loadDep);
 
 public:
-    LeakerCheckerPass(GlobalContext *Ctx_)
-        : IterativeModulePass(Ctx_, "LeakerChecker") {}
+    StructCheckerPass(GlobalContext *Ctx_)
+        : IterativeModulePass(Ctx_, "KeyStructChecker") {}
 
     virtual bool doInitialization(llvm::Module* );
     virtual bool doFinalization(llvm::Module* );

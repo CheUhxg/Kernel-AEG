@@ -413,7 +413,7 @@ void CopyAnalyzerPass::analyzeAlloc(llvm::CallInst* callInst) {
         return;
     }
 
-    LeakStructMap::iterator it = Ctx->keyStructMap.find(structName);
+    KeyStructMap::iterator it = Ctx->keyStructMap.find(structName);
     if (it != Ctx->keyStructMap.end()) {
 
         it->second->allocaInst.insert(callInst);
@@ -1369,7 +1369,7 @@ void CopyAnalyzerPass::addCopyInst(StructInfo *stInfo, llvm::CallInst *callInst,
     
     stInfo->copyInst.insert(callInst);
 
-    LeakStructMap::iterator it = Ctx->keyStructMap.find(stInfo->name);
+    KeyStructMap::iterator it = Ctx->keyStructMap.find(stInfo->name);
     if(it == Ctx->keyStructMap.end()){
         Ctx->keyStructMap.insert(std::make_pair(stInfo->name, stInfo));
     }
@@ -1940,7 +1940,7 @@ llvm::StructType* CopyAnalyzerPass::checkSource(std::vector<llvm::Value*>& srcSe
 // join allocInstMap and copyInstMap to compute moduleStructMap
 // reverse moduleStructMap to obtain structModuleMap
 // reachable analysis to compute allocSyscallMap and copySyscallMap
-// join allocSyscallMap and copySyscallMap to compute leakerList
+// join allocSyscallMap and copySyscallMap to compute keyStructList
 bool CopyAnalyzerPass::doFinalization(Module* M) {
 
     KA_LOGS(1, "[Finalize] " << M->getModuleIdentifier() << "\n");
@@ -2058,7 +2058,7 @@ bool CopyAnalyzerPass::doFinalization(Module* M) {
         
     }
 
-    KA_LOGS(1, "Building leakerList ...\n");
+    KA_LOGS(1, "Building keyStructList ...\n");
     for (StructTypeSet::iterator itr = Ctx->moduleStructMap[M].begin(), 
             ite = Ctx->moduleStructMap[M].end(); itr != ite; itr++) {
 
@@ -2074,12 +2074,12 @@ bool CopyAnalyzerPass::doFinalization(Module* M) {
             // || asit == Ctx->allocSyscallMap.end())
             continue;
 
-        LeakerList::iterator tit = Ctx->leakerList.find(structName);
-        if (tit == Ctx->leakerList.end()) {
+        KeyStructList::iterator tit = Ctx->keyStructList.find(structName);
+        if (tit == Ctx->keyStructList.end()) {
             InstSet instSet;
             for (auto I : Ctx->copyInstMap[structName])
                 instSet.insert(I);
-            Ctx->leakerList.insert(std::make_pair(structName, instSet));
+            Ctx->keyStructList.insert(std::make_pair(structName, instSet));
 
         } else {
             for (auto I : Ctx->copyInstMap[structName])
@@ -2160,8 +2160,8 @@ FuncSet CopyAnalyzerPass::reachableSyscall(llvm::Function* F) {
     return  reachableSyscalls;
 }
 
-void CopyAnalyzerPass::dumpSimplifiedLeakers(){
-    for(LeakStructMap::iterator it = Ctx->keyStructMap.begin(),
+void CopyAnalyzerPass::dumpSimplifiedKeyStructs(){
+    for(KeyStructMap::iterator it = Ctx->keyStructMap.begin(),
             e = Ctx->keyStructMap.end(); it != e; it++ ){
 
         StructInfo *st = it->second;
@@ -2173,11 +2173,11 @@ void CopyAnalyzerPass::dumpSimplifiedLeakers(){
 }
 
 // dump final moduleStructMap and structModuleMap for debugging
-void CopyAnalyzerPass::dumpLeakers() {
+void CopyAnalyzerPass::dumpKeyStructs() {
 
-    RES_REPORT("\n=========  printing LeakStructMap ==========\n");
+    RES_REPORT("\n=========  printing KeyStructMap ==========\n");
 
-    for(LeakStructMap::iterator it = Ctx->keyStructMap.begin(),
+    for(KeyStructMap::iterator it = Ctx->keyStructMap.begin(),
             e = Ctx->keyStructMap.end(); it != e; it++ ){
             
         // RES_REPORT("[+] " << it->first << "\n");
@@ -2225,7 +2225,7 @@ void CopyAnalyzerPass::dumpLeakers() {
     }
 
 
-    RES_REPORT("======= end printting LeakStructMap =========\n");
+    RES_REPORT("======= end printting KeyStructMap =========\n");
 
     if(VerboseLevel >= 3){
         // dump alias
@@ -2328,10 +2328,10 @@ void CopyAnalyzerPass::dumpLeakers() {
     }
     RES_REPORT("====== end printing allocInstMap ==========\n");
 
-    RES_REPORT("\n=========  printing leakerList ==========\n");
+    RES_REPORT("\n=========  printing keyStructList ==========\n");
     cnt = 0;
-    for (LeakerList::iterator i = Ctx->leakerList.begin(), 
-            e = Ctx->leakerList.end(); i != e; i++, cnt++) {
+    for (KeyStructList::iterator i = Ctx->keyStructList.begin(), 
+            e = Ctx->keyStructList.end(); i != e; i++, cnt++) {
 
         std::string structName = i->first;
         InstSet& instSet = i->second;
@@ -2349,12 +2349,12 @@ void CopyAnalyzerPass::dumpLeakers() {
          }
                     
     }
-    RES_REPORT("====== end printing leakerList ==========\n");
+    RES_REPORT("====== end printing keyStructList ==========\n");
     
     RES_REPORT("\n========= printing allocSyscallMap & copySyscallMap ==========\n");
     cnt = 0;
-    for (LeakerList::iterator i = Ctx->leakerList.begin(), 
-            e = Ctx->leakerList.end(); i != e; i++, cnt++) {
+    for (KeyStructList::iterator i = Ctx->keyStructList.begin(), 
+            e = Ctx->keyStructList.end(); i != e; i++, cnt++) {
 
         std::string structName = i->first;
         RES_REPORT("[" << cnt << "] " << structName << "\n");
@@ -2367,7 +2367,7 @@ void CopyAnalyzerPass::dumpLeakers() {
         // XXX 
         //      asit != Ctx->allocSyscallMap.end() &&
                lsit != Ctx->copySyscallMap.end() &&
-               "leakerList is allocSyscallMap AND copySyscallMap");
+               "keyStructList is allocSyscallMap AND copySyscallMap");
         
         // XXX
         /*

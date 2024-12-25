@@ -17,7 +17,7 @@
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/Analysis/CallGraph.h>
 
-#include "LeakerChecker.h"
+#include "StructChecker.h"
 #include "Annotation.h"
 
 using namespace llvm;
@@ -30,15 +30,15 @@ const string test_funcs[] = {
 	"necp_client_copy_internal"
 };
 
-bool LeakerCheckerPass::doInitialization(Module* M) {
+bool StructCheckerPass::doInitialization(Module* M) {
     return false;
 }
 
-bool LeakerCheckerPass::doFinalization(Module* M) {
+bool StructCheckerPass::doFinalization(Module* M) {
     return false;
 }
 
-bool LeakerCheckerPass::doModulePass(Module* M) {
+bool StructCheckerPass::doModulePass(Module* M) {
 
     TypeFinder usedStructTypes;
     usedStructTypes.run(*M, false);
@@ -47,7 +47,7 @@ bool LeakerCheckerPass::doModulePass(Module* M) {
             continue;
         // only analyze modules using structures we interested in
         std::string structName = getScopeName(st, M);
-        LeakStructMap::iterator it = Ctx->keyStructMap.find(structName);
+        KeyStructMap::iterator it = Ctx->keyStructMap.find(structName);
         if (it == Ctx->keyStructMap.end())
             continue;
         StructInfo* structInfo = it->second;
@@ -102,7 +102,7 @@ bool LeakerCheckerPass::doModulePass(Module* M) {
     return false;
 }
 
-void LeakerCheckerPass::collectChecks(
+void StructCheckerPass::collectChecks(
     StructInfo::SiteInfo& siteInfo, 
     Instruction* I, 
     Instruction* leakSite, 
@@ -294,7 +294,7 @@ void LeakerCheckerPass::collectChecks(
     }
 }
 
-unsigned LeakerCheckerPass::isReachable(BasicBlock* from, BasicBlock* to) {
+unsigned StructCheckerPass::isReachable(BasicBlock* from, BasicBlock* to) {
 
     std::vector<BasicBlock*> workList;
     std::vector<BasicBlock*> tracedBB;
@@ -339,7 +339,7 @@ unsigned LeakerCheckerPass::isReachable(BasicBlock* from, BasicBlock* to) {
     return 0;
 }
 
-void LeakerCheckerPass::collectCmpSrc(
+void StructCheckerPass::collectCmpSrc(
     Value* V, 
     StructInfo::CmpSrc& cmpSrc, 
     SrcSlice& tracedV, 
@@ -444,7 +444,7 @@ void LeakerCheckerPass::collectCmpSrc(
 }
 
 
-SmallPtrSet<Value*, 16> LeakerCheckerPass::getAliasSet(Value* V, Function* F) {
+SmallPtrSet<Value*, 16> StructCheckerPass::getAliasSet(Value* V, Function* F) {
     
 	SmallPtrSet<Value *, 16> null;
     null.clear();
@@ -461,7 +461,7 @@ SmallPtrSet<Value*, 16> LeakerCheckerPass::getAliasSet(Value* V, Function* F) {
     return alias->second; 
 }
 
-void LeakerCheckerPass::dumpChecks() {
+void StructCheckerPass::dumpChecks() {
     RES_REPORT("\n=========  printing leaker constraints===========\n");
     for (auto leaker : Ctx->keyStructMap) {
         StructInfo *st = leaker.second;

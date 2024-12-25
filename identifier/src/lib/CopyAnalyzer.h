@@ -108,8 +108,8 @@ public:
     virtual bool doModulePass(llvm::Module* );
 
     // debug
-    void dumpLeakers();
-    void dumpSimplifiedLeakers();
+    void dumpKeyStructs();
+    void dumpSimplifiedKeyStructs();
 };
 
 #endif

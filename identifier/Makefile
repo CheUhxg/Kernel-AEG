@@ -1,8 +1,7 @@
 CUR_DIR = $(shell pwd)
 SRC_DIR := ${CUR_DIR}/src
 BUILD_DIR := ${CUR_DIR}/build
-
-include Makefile.inc
+LLVM_BUILD := /usr/local
 
 NPROC := ${shell nproc}
 

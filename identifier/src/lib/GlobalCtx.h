@@ -47,14 +47,10 @@ typedef unordered_map<Function *, PointerAnalysisMap> FuncPointerAnalysisMap;
 typedef unordered_map<Function *, AAResults *> FuncAAResultsMap;
 /****************** end Alias **************/
 
-/****************** mbuf Leak API **************/
-
-/****************** end mbuf Leak API **************/
-
-/****************** Flexible Structural Object Identification **************/
+/****************** Key Object Identification **************/
 
 
-typedef std::unordered_map<std::string, StructInfo*> LeakStructMap;
+typedef std::unordered_map<std::string, StructInfo*> KeyStructMap;
 
 typedef llvm::SmallPtrSet<llvm::Instruction*, 32> InstSet;
 typedef std::unordered_map<std::string, InstSet> InstMap;
@@ -66,20 +62,20 @@ typedef std::unordered_map<std::string, ModuleSet> StructModuleMap;
 typedef llvm::SmallPtrSet<llvm::StructType*, 32> StructTypeSet;
 typedef llvm::DenseMap<llvm::Module*, StructTypeSet> ModuleStructMap;
 
-typedef std::unordered_map<std::string, InstSet> LeakerList;
+typedef std::unordered_map<std::string, InstSet> KeyStructList;
 
 typedef std::unordered_map<unsigned, InstSet> StoreMap;
 
-/**************** End Flexible Structural Object Identification ************/
+/**************** End Key Object Identification ************/
 
-/****************** Flexible Structural Object Evaluation **************/
+/****************** Key Object Evaluation **************/
 
-typedef std::unordered_map<std::string, std::vector<unsigned> > LeakerLayout;
+typedef std::unordered_map<std::string, std::vector<unsigned> > KeyStructLayout;
 // typedef llvm::DenseMap<llvm::Value*, unsigned> SliceMap;
 typedef llvm::SmallPtrSet<llvm::ICmpInst*, 32> ICmpInstSet;
-typedef std::unordered_map<std::string, ICmpInstSet> LeakerICmpMap;
+typedef std::unordered_map<std::string, ICmpInstSet> KeyStructICmpMap;
 
-/**************** End Flexible Structural Object Evaluation ************/
+/**************** End Key Object Evaluation ************/
 
 class GlobalContext {
 private:
@@ -144,9 +140,9 @@ public:
   FuncAAResultsMap FuncAAResults;
 
   /****** Key struct **********/
-  LeakStructMap keyStructMap;
+  KeyStructMap keyStructMap;
 
-  /****************** Flexible Structural Object Identification **************/
+  /****************** Key Object Identification **************/
 
   // map structure to allocation site
   InstMap allocInstMap;
@@ -166,7 +162,7 @@ public:
   // map flexible structure to module
   StructModuleMap structModuleMap;
 
-  LeakerList leakerList;
+  KeyStructList keyStructList;
 
   // mbuf leak api
   FuncSet LeakAPIs;
@@ -175,12 +171,12 @@ public:
   FuncSet devAllowList;
   FuncSet devDenyList;
 
-  /**************** End Flexible Structural Object Identification ************/
+  /**************** End Key Object Identification ************/
   
-  /****************** Flexible Structural Object Evaluation **************/
-  LeakerLayout leakerLayout;
-  LeakerICmpMap leakerICmpMap;
-  /**************** End Flexible Structural Object Evaluation ************/
+  /****************** Key Object Evaluation **************/
+  KeyStructLayout keyStructLayout;
+  KeyStructICmpMap keyStructICmpMap;
+  /**************** End Key Object Evaluation ************/
 
   // A factory object that knows how to manage AndersNodes
   // AndersNodeFactory nodeFactory;

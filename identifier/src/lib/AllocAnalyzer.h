@@ -20,7 +20,6 @@ private:
 
     void runOnFunction(llvm::Function*);
     bool isCall2Alloc(std::string calleeName);
-    bool isCall2Copy(std::string calleeName);
     void backwardUseAnalysis(llvm::Value *V, std::set<llvm::Value *> &DefineSet);
     llvm::Instruction* forwardUseAnalysis(llvm::Value *V);
     void forwardAnalysis(llvm::Value *V, std::set<llvm::StoreInst *> &StoreInstSet, std::set<llvm::Value *> &TrackSet);
@@ -30,10 +29,6 @@ private:
     bool expandBinaryOp(llvm::Value *V, std::set<llvm::Value *> &OpendSet);
     void handleGetElement(llvm::Value *V, StoreMap &SM);
     void analyzeAlloc(llvm::CallInst* callInst);
-    void analyzeLeak(llvm::CallInst* callInst, std::string calleeName);
-    void analyzeMlen(llvm::CallInst* callInst, std::string calleeName);
-    void analyzeMptr(llvm::CallInst* callInst, std::string calleeName);
-    bool allocFromHeap(llvm::Instruction* inst);
     bool getAllocSite(std::vector<Value *> &argSet, std::set<CallInst *> &retSet);
 
     bool isPriviledged(llvm::Function *F);
@@ -41,16 +36,8 @@ private:
     SmallPtrSet<Value *, 16> getAliasSet(llvm::Value *V, llvm::Function *F);
     void composeMbufLeakAPI(void);
     bool isMbufData(Value *buf);
-    void findLenSources(llvm::Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet);
-    void findPtrSources(llvm::Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet);
     void findSources(llvm::Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet);
     void checkChannelUsageinFunc(llvm::Value* V, llvm::Value*&, llvm::Value*&);
-    void addCopyInst(StructInfo *stInfo, llvm::CallInst *callInst, unsigned offset, llvm::Instruction *I, llvm::StructType *st, unsigned argOffset);
-    void setupLeakInfo(std::vector<Value*> &srcSet, llvm::CallInst *callInst, llvm::Value *from);
-    void setupLenInfo(std::vector<Value*> &lenSet, llvm::CallInst *callInst, llvm::Value *to, llvm::Value *from);
-    void setupPtrInfo(std::vector<Value*> &srcSet, llvm::CallInst *callInst, llvm::Value *from);
-    void setupSiteInfo(std::vector<llvm::Value*> &srcSet, StructInfo *stInfo, llvm::CallInst *callInst, unsigned offset, unsigned argOffset);
-    llvm::StructType* checkSource(std::vector<llvm::Value*>& srcSet, StructTypeSet& stSet , llvm::CallInst *CI, bool isLen);
     FuncSet getSyscalls(Function *F);
     FuncSet reachableSyscall(llvm::Function*);
 
@@ -59,16 +46,6 @@ private:
     "__kmalloc", "__kmalloc_node", "kmalloc", "kvzalloc",
     "kmalloc_node", "kmalloc_array", "kzalloc", "kmalloc_array_node", "kzalloc_node",
     "kcalloc_node", "kcalloc", "sock_kmalloc",
-    };
-
-    // hard-coded copy API
-    std::vector<std::string> copyAPIVec = {
-    // "get_user", "copy_from_user", "_copy_from_user",
-    // "nla_strscpy", "nla_memcpy",
-    // "skb_copy_from_linear_data", "skb_copy_from_linear_data_offset",
-    // "skb_get", "copyin"
-    "copy_from_user", "_copy_from_user",
-    // "put_user", "skb_put_data",
     };
 
     // hard-coded privileged syscalls
@@ -105,10 +82,6 @@ public:
     virtual bool doInitialization(llvm::Module* );
     virtual bool doFinalization(llvm::Module* );
     virtual bool doModulePass(llvm::Module* );
-
-    // debug
-    void dumpLeakers();
-    void dumpSimplifiedLeakers();
 };
 
 #endif
