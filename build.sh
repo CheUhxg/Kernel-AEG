@@ -57,5 +57,19 @@ build_linux() {
     fi
 }
 
-install_llvm
+build_identifier() {
+    echo -e "${BLUE}==> Building Identifier...${NC}"
+    cd $HOME/identifier
+    make
+}
+
+build_trigger() {
+    echo -e "${BLUE}==> Building Trigger...${NC}"
+    cd $HOME/trigger
+    make
+}
+
+# install_llvm
 build_linux
+build_identifier
+build_trigger
