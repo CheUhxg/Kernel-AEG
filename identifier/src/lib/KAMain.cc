@@ -198,17 +198,17 @@ int main(int argc, char **argv) {
     PointerAnalysisPass PAPass(&GlobalCtx);
     PAPass.run(GlobalCtx.Modules);
 
-    // PermissionAnalysisPass PermissionPass(&GlobalCtx);
-    // PermissionPass.run(GlobalCtx.Modules);
+    PermissionAnalysisPass PermissionPass(&GlobalCtx);
+    PermissionPass.run(GlobalCtx.Modules);
+
+    AllocAnalyzerPass AAPass(&GlobalCtx);
+    AAPass.run(GlobalCtx.Modules);
 
     if(DumpAlias){
         PAPass.dumpAlias();
     }
     
     if (DumpKeyStructs) {
-        AllocAnalyzerPass AAPass(&GlobalCtx);
-        AAPass.run(GlobalCtx.Modules);
-
         CopyAnalyzerPass CAPass(&GlobalCtx);
         CAPass.run(GlobalCtx.Modules);
         CAPass.dumpKeyStructs();

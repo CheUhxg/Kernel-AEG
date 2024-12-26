@@ -32,7 +32,7 @@ inline llvm::StringRef getStringFromMD(llvm::MDNode *MD, unsigned index=MD_NAME_
 
 static inline bool isFunctionPointer(llvm::Type *Ty) {
 	llvm::PointerType *PTy = llvm::dyn_cast<llvm::PointerType>(Ty);
-	return PTy && PTy->getElementType()->isFunctionTy();
+	return PTy && PTy->getPointerElementType()->isFunctionTy();
 }
 
 static inline bool isFunctionPointerOrVoid(llvm::Type *Ty) {
@@ -40,7 +40,7 @@ static inline bool isFunctionPointerOrVoid(llvm::Type *Ty) {
 	if (!PTy)
 		return false;
 
-	llvm::Type *subTy = PTy->getElementType();
+	llvm::Type *subTy = PTy->getPointerElementType();
 	if (subTy->isFunctionTy())
 		return true;
 

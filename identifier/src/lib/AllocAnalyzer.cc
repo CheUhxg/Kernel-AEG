@@ -55,10 +55,6 @@ bool AllocAnalyzerPass::doInitialization(Module* M) {
 
     Ctx->moduleStructMap.insert(std::make_pair(M, structTypeSet));
 
-    if(Ctx->LeakAPIs.size() == 0){
-        composeMbufLeakAPI();
-    }
-
     return false;
 }
 
@@ -129,9 +125,6 @@ void AllocAnalyzerPass::runOnFunction(Function *F) {
     if(F->hasSection() && F->getSection().str() == ".init.text")
         return;
 
-    if (F->getName().equals("selinux_xfrm_alloc_user")) {
-        KA_LOGS(0, "[GOOD]\n");
-    }
     for (inst_iterator i = inst_begin(F), e = inst_end(F); i != e; i++) {
         Instruction* I = &*i;
         if (CallInst *callInst = dyn_cast<CallInst>(I)) {
@@ -141,7 +134,7 @@ void AllocAnalyzerPass::runOnFunction(Function *F) {
             if (callee) {
                 std::string calleeName = callee->getName().str();
                 if (isCall2Alloc(calleeName)) {
-                    analyzeAlloc(callInst); // flexible part
+                    analyzeAlloc(callInst);
                 }
             }
         }
@@ -154,10 +147,6 @@ bool AllocAnalyzerPass::isCall2Alloc(std::string calleeName) {
     if (std::find(allocAPIVec.begin(), allocAPIVec.end(), 
             calleeName) != allocAPIVec.end())
         return true;
-    // else if(calleeName.find("alloc") != std::string::npos
-    //          || calleeName.find("ALLOC") != std::string::npos)
-    //     // aggressive analysis
-    //     return true;
     return false;
 }
 
@@ -309,6 +298,9 @@ void AllocAnalyzerPass::forwardAnalysis(llvm::Value *V,
             // TODO: forward PHI node
             forwardAnalysis(User, StoreInstSet, TrackSet);
 
+        } else if (auto *BCI = dyn_cast<BitCastInst>(User)) {
+            forwardAnalysis(BCI, StoreInstSet, TrackSet);
+            KA_LOGS(0, "got BCI\n");
         } else {
             errs() << "\nForwardAnalysis Fatal errors , please handle " << *User << "\n";
             // exit(0);
@@ -317,7 +309,6 @@ void AllocAnalyzerPass::forwardAnalysis(llvm::Value *V,
 }
 
 
-// customize flexible part here
 // every time adding a new struct to allocInstMap, 
 // update allocSyscallMap
 void AllocAnalyzerPass::analyzeAlloc(llvm::CallInst* callInst) {
@@ -326,6 +317,7 @@ void AllocAnalyzerPass::analyzeAlloc(llvm::CallInst* callInst) {
     Function *F;
     Module *M;
     GetElementPtrInst *fromGEP = nullptr;
+    unsigned fromOffset;
 
     M = callInst->getModule();
     F = callInst->getCalledFunction();
@@ -342,26 +334,29 @@ void AllocAnalyzerPass::analyzeAlloc(llvm::CallInst* callInst) {
     }
 
     if (!stType) {
-        for (auto *callUser : callInst->users()) {
-            if (auto *BCI = dyn_cast<BitCastInst>(callUser)) {
-                KA_LOGS(1, "Found BitCast: "<< *BCI << "\n");
-                PointerType* ptrType = dyn_cast<PointerType>(BCI->getDestTy());
-                Type* baseType = ptrType->getElementType();
-                stType = dyn_cast<StructType>(baseType);
-                if (stType == nullptr)
-                    continue;
-                break;
-            } else if (auto *SI = dyn_cast<StoreInst>(callUser)) {
-                if (auto *GEP = dyn_cast<GetElementPtrInst>(SI->getPointerOperand())) {
-                    Type *baseType = GEP->getSourceElementType();
-                    stType = dyn_cast<StructType>(baseType);
-                    if (stType == nullptr)
-                        continue;
-                    fromGEP = GEP;
-                    break;
-                }
-            } else if (auto *LI = dyn_cast<LoadInst>(callUser)) {
+        std::set<llvm::StoreInst *> storeInstSet;
+        std::set<llvm::Value *> trackSet;
+        forwardAnalysis(callInst, storeInstSet, trackSet);
 
+        for (auto SI : storeInstSet) {
+            Value *Op0 = SI->getOperand(0);
+            Value *Op1 = SI->getOperand(1);
+            if (auto BCI = dyn_cast<BitCastInst>(Op0)) {
+                PointerType *ptrTy = dyn_cast<PointerType>(BCI->getDestTy());
+                if (!ptrTy)
+                    continue;
+                stType = dyn_cast<StructType>(ptrTy->getPointerElementType());
+                if (stType)
+                    break;
+            }
+            if (auto GEP = dyn_cast<GetElementPtrInst>(Op1)) {
+                fromGEP = GEP;
+                auto CSI = dyn_cast<ConstantInt>(fromGEP->getOperand(2));
+                fromOffset = CSI->getZExtValue();
+
+                stType = dyn_cast<StructType>(fromGEP->getSourceElementType());
+                if (stType)
+                    break;
             }
         }
     }
@@ -377,11 +372,10 @@ void AllocAnalyzerPass::analyzeAlloc(llvm::CallInst* callInst) {
     if (structName.find("struct") == string::npos)
         return;
 
-    // if (fromGEP) {
-    //     structName = structName + "." + to_string(fromGEP->getNumIndices());
-    // }
-
-    KA_LOGS(0, "[ALLOC] " << structName << ">");
+    if (fromGEP)
+        KA_LOGS(0, "[ALLOC] " << structName + "." + to_string(fromOffset) << ">");
+    else
+        KA_LOGS(0, "[ALLOC] " << structName << ">");
     DEBUG_Inst(0, callInst);
 
     Function *body = callInst->getFunction();
@@ -394,177 +388,14 @@ void AllocAnalyzerPass::analyzeAlloc(llvm::CallInst* callInst) {
     if (it != Ctx->keyStructMap.end()) {
 
         it->second->allocaInst.insert(callInst);
-        if (fromGEP) it->second->fieldAllocGEP.insert(fromGEP->getNumIndices());
+        if (fromGEP) it->second->fieldAllocGEP.insert(fromOffset);
 
     } else {
         StructInfo *stInfo = Ctx->structAnalyzer.getStructInfo(stType, M);
         if (!stInfo) return;
         stInfo->allocaInst.insert(callInst);
-        if (fromGEP) stInfo->fieldAllocGEP.insert(fromGEP->getNumIndices());
+        if (fromGEP) stInfo->fieldAllocGEP.insert(fromOffset);
         Ctx->keyStructMap.insert(std::make_pair(structName, stInfo));
-    }
-}
-
-static bool argContainType(Function *F, string typeName) {
-    for (auto arg = F->arg_begin(); arg != F->arg_end(); ++arg) {
-        PointerType* ptrType = dyn_cast<PointerType>(arg->getType());
-        if (ptrType == nullptr)
-            continue;
-
-        Type* baseType = ptrType->getElementType();
-        StructType* stType = dyn_cast<StructType>(baseType);
-        if (stType == nullptr)
-            continue;
-
-        if (stType->getName() == typeName)
-            return true;
-    }
-    return false;
-}
-
-static bool argContainMbuf(Function *F) {
-    return argContainType(F, "struct.mbuf");
-}
-
-static bool addToFuncSet(Function *F, FuncSet &markedFuncSet) {
-    if (F && markedFuncSet.find(F) == markedFuncSet.end()) {
-        markedFuncSet.insert(F);
-        return true;
-    }
-    return false;
-}
-
-static bool addToCallInstSet(CallInst *CI, CallInstSet &CISet) {
-    if (CI && CISet.find(CI) == CISet.end()) {
-        CISet.insert(CI);
-        return true;
-    }
-    return false;
-}
-
-static bool isSndbuf(Value *V) {
-    if (auto *GEP = dyn_cast<GetElementPtrInst>(V)) {
-        PointerType* ptrType = dyn_cast<PointerType>(GEP->getPointerOperandType());
-        if(!ptrType)
-            return false;
-
-        Type* baseType = ptrType->getElementType();
-        StructType* stType = dyn_cast<StructType>(baseType);
-
-        if (stType->getName() != "struct.socket")
-            return false;
-
-        if (GEP->getNumIndices() != 2)
-            return false;
-
-        if (auto *offset1 = dyn_cast<ConstantInt>(GEP->getOperand(1))) {
-            if (auto *offset2 = dyn_cast<ConstantInt>(GEP->getOperand(2))) {
-                if (offset1->getZExtValue() == 0 && offset2->getZExtValue() == 19) {
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
-}
-
-void AllocAnalyzerPass::composeMbufLeakAPI() {
-
-    CallInstSet LeakInst;
-    FuncSet trackedFuncSet;
-
-    for (auto M : Ctx->Callers) {
-        Function *F = M.first;
-
-        if(!addToFuncSet(F, trackedFuncSet))
-            continue;
-
-        if(!argContainMbuf(F))
-            continue;
-
-        if(argContainType(F, "struct.sockbuf")){
-            // if the sockbuf is coming from sock's snd_buf
-            CallerMap::iterator it = Ctx->Callers.find(F);
-            if (it == Ctx->Callers.end()) {
-                continue;
-            }
-            CallInstSet &CIS = it->second;
-
-            for(CallInst *CI : CIS){
-                // check if sockbuf is snd_buf
-                for(unsigned i=0; i<CI->arg_size(); i++){
-                    if(isSndbuf(CI->getArgOperand(i))){
-                        addToCallInstSet(CI, LeakInst);
-                        KA_LOGS(1, "LEAK API: " <<  CI->getFunction()->getName() << " --------\n");
-                        KA_LOGS(1, "CallInst : ");
-                        DEBUG_Inst(1, CI);
-                        KA_LOGS(1, "\n");
-                    }
-                }
-            }
-        }
-    }
-
-    SmallVector<Function*, 4> workList;
-
-    workList.clear();
-
-    for( auto *CI : LeakInst){
-        Function *F = CI->getFunction();
-        if(!F)
-            continue;
-        workList.push_back(F);
-    }
-
-    trackedFuncSet.clear();
-
-    while(!workList.empty()){
-        Function* FF = workList.pop_back_val();
-
-        // already checked FF
-        if(!addToFuncSet(FF, trackedFuncSet))
-            continue;
-
-        // add before checking mbuf in argument
-        // so as to include top APIs that don't
-        // have mbuf in arguments.
-        addToFuncSet(FF, Ctx->LeakAPIs);
-
-        if(!argContainMbuf(FF))
-            continue;
-
-        CallerMap::iterator it = Ctx->Callers.find(FF);
-        if (it == Ctx->Callers.end()) {
-            continue;
-        }
-        CallInstSet &CIS = it->second;
-
-        for (CallInst *CI : CIS) {
-            Function *CallerF = CI->getParent()->getParent();
-            workList.push_back(CallerF);
-        }
-    }
-
-    FuncSet tmpFuncSet;
-    for(auto *FF : Ctx->LeakAPIs){
-        for (inst_iterator i = inst_begin(FF), e = inst_end(FF); i != e; i++) {
-            Instruction* I = &*i;
-            if(auto *CI = dyn_cast<CallInst>(I)){
-                Function *F = CI->getCalledFunction();
-                if(F && argContainMbuf(F)){
-                    KA_LOGS(1, "adding " << F->getName() << " to LeakAPIs\n");
-                    addToFuncSet(F, tmpFuncSet);
-                }
-            }
-        }
-    }
-
-    for(auto *FF : tmpFuncSet){
-        addToFuncSet(FF, Ctx->LeakAPIs);
-    }
-
-    for(auto *FF : Ctx->LeakAPIs){
-        KA_LOGS(0, "Function : " << FF->getName() << "\n");
     }
 }
 
@@ -619,217 +450,6 @@ SmallPtrSet<Value *, 16> AllocAnalyzerPass::getAliasSet(Value *V, Function *F){
     return alias->second;
 }
 
-void AllocAnalyzerPass::findSources(Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet) {
-
-    // Lewis: hard coded boundary to save time 
-    // and avoid stack overflow, I mean that "overflow", hahaha
-    // TODO: solve alias in current function
-    if (trackedSet.count(V) != 0
-        //  || trackedSet.size() >= 8000
-        )
-        return;
-
-    trackedSet.insert(V);
-    KA_LOGS(2, "FindSource: Adding ");KA_LOGV(2, V);
-
-    // FIXME: Not examining called function inside can introduce FP
-    // Lewis: this guess hits, add one chicken leg tonight!
-    if (CallInst* CI = dyn_cast<CallInst>(V)) {
-        // Storing callInst helps to check from value type
-        srcSet.push_back(V);
-        // Heuristic 1: calling to strlen()/vmalloc() isn't what we want
-        const Function* callee = CI->getCalledFunction();
-        if (callee != nullptr) {
-            std::string calleeName = callee->getName().str();
-            if (calleeName == "strlen"||
-                calleeName == "vmalloc")
-                return;
-        }
-
-        if(!callee) return;
-        // interprocedural analysis
-        StringRef tmpName = callee->getName();
-        if(tmpName.lower().find("alloc") != string::npos
-            || tmpName.lower().find("ALLOC") != string::npos
-            || tmpName.lower().find("free") != string::npos
-            || tmpName.lower().find("FREE") != string::npos
-        ){
-            return;
-        }
-        KA_LOGS(1, "Starting interprocedural analysis for "<<callee->getName().str()<<"\n");
-        for(const BasicBlock &BB : *callee){
-            for(const Instruction &I : BB){
-                if(const ReturnInst *RI = dyn_cast<ReturnInst>(&I)){
-                    if(Value *rValue = RI->getReturnValue()){
-                        findSources(rValue, srcSet, trackedSet);
-                    }
-                }        
-            }
-        }
-        // comment this because interprocedural analysis will taint the interesting arguments
-        // for (auto AI = CI->arg_begin(), E = CI->arg_end(); AI != E; AI++) {
-        //     Value* Param = dyn_cast<Value>(&*AI);
-        //     findSources(Param, srcSet, trackedSet);
-        // }
-        return;
-    }
-
-    if(BitCastInst *BCI = dyn_cast<BitCastInst>(V)){
-        srcSet.push_back(V);
-        findSources(BCI->getOperand(0), srcSet, trackedSet);
-        return;
-    }
-
-    if (dyn_cast<AllocaInst>(V)){
-        srcSet.push_back(V);
-        return;
-    }
-
-    if (dyn_cast<ConstantPointerNull>(V)){
-        srcSet.push_back(V);
-        return;
-    }
-
-    if (dyn_cast<Constant>(V)) {
-        srcSet.push_back(V);
-        return;
-    }
-
-    // Lewis: it is impossible but leave this in case
-    // zipline: we need to handle this
-    if (dyn_cast<GlobalVariable>(V)) {
-        Constant* Ct = dyn_cast<Constant>(V);
-        // if (!Ct)
-        //     return;
-        // srcSet.push_back(V);
-        return;
-    }
-
-    // Lewis: it is impossible but leave this in case
-    if (ConstantExpr* CE = dyn_cast<ConstantExpr>(V)) {
-        findSources(CE->getOperand(0), srcSet, trackedSet);
-        return;
-    }
-
-    if (Argument* A = dyn_cast<Argument>(V)) {
-        srcSet.push_back(V);
-        return; // intra-procedural
-
-        // inter-procedural analysis begins following
-        Function* callee = A->getParent();
-        if (callee == nullptr)
-            return;
-
-        for (CallInst* caller : Ctx->Callers[callee]) {
-            if (caller) {
-                // Lewis: this should never happen
-                if (A->getArgNo() >= caller->arg_size())
-                    continue;
-                Value* arg = caller->getArgOperand(A->getArgNo());
-                if (arg == nullptr)
-                    continue;
-
-                Function* F = caller->getParent()->getParent();
-                KA_LOGS(1, "<<<<<<<<< Cross Analyzing " << F->getName().str() <<  "()\n");
-                KA_LOGV(1, caller);
-                findSources(arg, srcSet, trackedSet);
-            }
-        }
-    }
-
-    if (LoadInst* LI = dyn_cast<LoadInst>(V)) {
-
-        srcSet.push_back(V);
-
-        // alias handling
-        Function *F = LI->getFunction();
-
-        if(!F) return;
-
-        SmallPtrSet<Value *, 16> aliasSet;
-        bool foundStore = false;
-
-        aliasSet = getAliasSet(LI->getPointerOperand(), F);
-
-        // add Load's pointer operand to the set
-        // it may have a store successor
-        aliasSet.insert(LI->getPointerOperand());
-
-        for(auto *alias : aliasSet){
-            for(auto *aliasUser : alias->users()){
-                if(auto *SI = dyn_cast<StoreInst>(aliasUser)){
-                    foundStore |= true;
-                    KA_LOGS(1, "FindSource: resolved an alias : " << *LI << " == " << *SI << "\n");
-                    findSources(SI->getValueOperand(), srcSet, trackedSet);
-                }
-            }
-        }
-
-        // // return because it maybe loading from a stack value
-        // // since we can found a corresponding store
-        // if(foundStore)
-        //     return;
-
-
-        findSources(LI->getPointerOperand(), srcSet, trackedSet);
-        return;
-    }
-
-    if (StoreInst* SI = dyn_cast<StoreInst>(V)) {
-        // findSources(SI->getValueOperand(), srcSet, trackedSet);
-    }
-    
-    if (SelectInst* SI = dyn_cast<SelectInst>(V)) {
-        findSources(SI->getTrueValue(), srcSet, trackedSet);
-        findSources(SI->getFalseValue(), srcSet, trackedSet);
-        return ;
-    }
-
-    if (GetElementPtrInst* GEP = dyn_cast<GetElementPtrInst>(V)) {
-        // TODO f**k aliases
-        KA_LOGS(1, "Here may contain an alias, please check this\n");
-        DEBUG_Inst(2, GEP);
-        srcSet.push_back(V);
-        // Heuristic 2: first GEP is enough?
-        // Lewis: Wrong
-        findSources(GEP->getPointerOperand(), srcSet, trackedSet);
-        return;
-    }
-
-    if (PHINode* PN = dyn_cast<PHINode>(V)) {
-        for (unsigned i = 0, e = PN->getNumIncomingValues(); i != e; i++) {
-            Value* IV = PN->getIncomingValue(i);
-            findSources(IV, srcSet, trackedSet);
-        }
-        return;
-    } 
-
-    if (ICmpInst* ICmp = dyn_cast<ICmpInst>(V)) {
-        for (unsigned i = 0, e = ICmp->getNumOperands(); i != e; i++) {
-            Value* Opd = ICmp->getOperand(i);
-            findSources(Opd, srcSet, trackedSet);
-        }
-        return;
-    }
-
-    if (BinaryOperator* BO = dyn_cast<BinaryOperator>(V)) {
-        for (unsigned i = 0, e = BO->getNumOperands(); i != e; i++) {
-            Value* Opd = BO->getOperand(i);
-            if (dyn_cast<Constant>(Opd))
-                continue;
-            findSources(Opd, srcSet, trackedSet);
-        }
-        return;
-    }
-
-    if (UnaryInstruction* UI = dyn_cast<UnaryInstruction>(V)) {
-        findSources(UI->getOperand(0), srcSet, trackedSet);
-        return;
-    }
-
-    return;
-}
-
 // join allocInstMap and copyInstMap to compute moduleStructMap
 // reverse moduleStructMap to obtain structModuleMap
 // reachable analysis to compute allocSyscallMap and copySyscallMap
@@ -856,12 +476,10 @@ bool AllocAnalyzerPass::doFinalization(Module* M) {
         std::string structName = getScopeName(st, M);
         
         InstMap::iterator liit = Ctx->copyInstMap.find(structName);
-        // XXX 
         // AllocInstMap::iterator aiit = Ctx->allocInstMap.find(structName);
 
         // either leak or alloc or both
         if (liit == Ctx->copyInstMap.end() )
-            // XXX    
             //  || aiit == Ctx->allocInstMap.end() )
             Ctx->moduleStructMap[M].erase(st);
     }
@@ -900,7 +518,6 @@ bool AllocAnalyzerPass::doFinalization(Module* M) {
         std::string structName = getScopeName(st, M);
 
         // copySyscallMap
-        // XXX
         KA_LOGS(1, "Dealing with leaking: " << structName << "\n");
         InstMap::iterator liit = Ctx->copyInstMap.find(structName);
         SyscallMap::iterator lsit = Ctx->copySyscallMap.find(structName);
@@ -924,7 +541,6 @@ bool AllocAnalyzerPass::doFinalization(Module* M) {
         }
 
         // allocSyscallMap
-        // XXX
         /*
         KA_LOGS(1, "Dealing with allocating: " << structName << "\n");
         AllocInstMap::iterator aiit = Ctx->allocInstMap.find(structName);
@@ -959,11 +575,9 @@ bool AllocAnalyzerPass::doFinalization(Module* M) {
         std::string structName = getScopeName(st, M);
 
         SyscallMap::iterator lsit = Ctx->copySyscallMap.find(structName);
-        // XXX 
         // AllocSyscallMap::iterator asit = Ctx->allocSyscallMap.find(structName);
         
         if (lsit == Ctx->copySyscallMap.end())
-            //XXX    
             // || asit == Ctx->allocSyscallMap.end())
             continue;
 

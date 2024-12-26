@@ -124,7 +124,7 @@ void StructCheckerPass::collectChecks(
 
         PointerType* ptrType = dyn_cast<PointerType>(GEP->getPointerOperandType());
         assert(ptrType != nullptr);
-        Type* baseType = ptrType->getElementType();
+        Type* baseType = ptrType->getPointerElementType();
         StructType* stType = dyn_cast<StructType>(baseType);
         if (stType == nullptr)
             return;        
@@ -413,7 +413,7 @@ void StructCheckerPass::collectCmpSrc(
             return;
         PointerType* ptrType = dyn_cast<PointerType>(GEP->getPointerOperandType());
         assert(ptrType != nullptr);
-        Type* baseType = ptrType->getElementType();
+        Type* baseType = ptrType->getPointerElementType();
 
         if (StructType* stType = dyn_cast<StructType>(baseType)) {
             ConstantInt *CI = dyn_cast<ConstantInt>(GEP->getOperand(2));

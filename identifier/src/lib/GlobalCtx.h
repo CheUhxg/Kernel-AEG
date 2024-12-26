@@ -70,11 +70,6 @@ typedef std::unordered_map<unsigned, InstSet> StoreMap;
 
 /****************** Key Object Evaluation **************/
 
-typedef std::unordered_map<std::string, std::vector<unsigned> > KeyStructLayout;
-// typedef llvm::DenseMap<llvm::Value*, unsigned> SliceMap;
-typedef llvm::SmallPtrSet<llvm::ICmpInst*, 32> ICmpInstSet;
-typedef std::unordered_map<std::string, ICmpInstSet> KeyStructICmpMap;
-
 /**************** End Key Object Evaluation ************/
 
 class GlobalContext {
@@ -156,16 +151,13 @@ public:
   // map structure to syscall entry reaching copy site
   SyscallMap copySyscallMap;
 
-  // map module to set of used flexible structure
+  // map module to set of used key structure
   ModuleStructMap moduleStructMap;
 
-  // map flexible structure to module
+  // map key structure to module
   StructModuleMap structModuleMap;
 
   KeyStructList keyStructList;
-
-  // mbuf leak api
-  FuncSet LeakAPIs;
 
   // device permission allow function list and deny function list
   FuncSet devAllowList;
@@ -174,8 +166,7 @@ public:
   /**************** End Key Object Identification ************/
   
   /****************** Key Object Evaluation **************/
-  KeyStructLayout keyStructLayout;
-  KeyStructICmpMap keyStructICmpMap;
+  // TODO: delete if no evaluation needed
   /**************** End Key Object Evaluation ************/
 
   // A factory object that knows how to manage AndersNodes
@@ -184,7 +175,6 @@ public:
   ModuleList Modules;
 
   ModuleMap ModuleMaps;
-  std::set<std::string> InvolvedModules;
 };
 
 class IterativeModulePass {

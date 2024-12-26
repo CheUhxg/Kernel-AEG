@@ -30,7 +30,7 @@ using namespace llvm;
 
 static inline bool needAnnotation(Value *V) {
 	if (PointerType *PTy = dyn_cast<PointerType>(V->getType())) {
-		Type *Ty = PTy->getElementType();
+		Type *Ty = PTy->getPointerElementType();
 		return (Ty->isIntegerTy() || isFunctionPointer(Ty));
 	}
 	return false;
@@ -266,10 +266,10 @@ std::string getStructId(Value *PVal, User::op_iterator &IS, User::op_iterator &I
 
     Type *PTy = PVal->getType();
     if (PointerType* PtrTy = dyn_cast<PointerType>(PTy) ) {
-        STy = dyn_cast<StructType>(PtrTy->getElementType());
+        STy = dyn_cast<StructType>(PtrTy->getPointerElementType());
         if (!STy) {
         /*
-            Type* ETy = PtrTy->getElementType();
+            Type* ETy = PtrTy->getPointerElementType();
             llvm::Type::TypeID ETid = ETy->getTypeID();
             fprintf(stderr, "TypeID: %u\n", ETid);
         */

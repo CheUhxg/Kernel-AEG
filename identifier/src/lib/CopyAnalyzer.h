@@ -39,8 +39,6 @@ private:
     bool isPriviledged(llvm::Function *F);
 
     SmallPtrSet<Value *, 16> getAliasSet(llvm::Value *V, llvm::Function *F);
-    void composeMbufLeakAPI(void);
-    bool isMbufData(Value *buf);
     void findLenSources(llvm::Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet);
     void findPtrSources(llvm::Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet);
     void findSources(llvm::Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet);

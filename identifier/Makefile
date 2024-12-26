@@ -18,7 +18,7 @@ build_ka_func = \
                 -DCMAKE_CXX_FLAGS_RELEASE="-std=c++14 -fno-rtti -fpic -g" \
 		&& make -j${NPROC})
 
-all: analyzer
+all: identifier
 
-analyzer:
+identifier:
 	$(call build_ka_func, ${SRC_DIR}, ${BUILD_DIR})

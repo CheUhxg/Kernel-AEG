@@ -34,9 +34,6 @@ private:
     bool isPriviledged(llvm::Function *F);
 
     SmallPtrSet<Value *, 16> getAliasSet(llvm::Value *V, llvm::Function *F);
-    void composeMbufLeakAPI(void);
-    bool isMbufData(Value *buf);
-    void findSources(llvm::Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet);
     void checkChannelUsageinFunc(llvm::Value* V, llvm::Value*&, llvm::Value*&);
     FuncSet getSyscalls(Function *F);
     FuncSet reachableSyscall(llvm::Function*);

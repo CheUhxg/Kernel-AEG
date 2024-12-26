@@ -27,7 +27,7 @@ void StructAnalyzer::addContainer(const StructType* container, StructInfo& conta
 	for (auto subType : ct->elements()) {
 		// strip away array
 		while (const ArrayType* arrayType = dyn_cast<ArrayType>(subType))
-			subType = arrayType->getElementType();
+			subType = arrayType->getPointerElementType();
 		if (const StructType* structType = dyn_cast<StructType>(subType)) {
 			if (!structType->isLiteral()) {
 				auto real = structMap.find(getScopeName(structType, M));
@@ -93,7 +93,7 @@ StructInfo& StructAnalyzer::addStructInfo(const StructType* st, const Module* M,
 			uint64_t arraySize = 1;
 			while (const ArrayType* arrayType = dyn_cast<ArrayType>(subType)) {
 				arraySize *= arrayType->getNumElements();
-				subType = arrayType->getElementType();
+				subType = arrayType->getPointerElementType();
 			}
 			if (arraySize == 0) arraySize = 1;
 
@@ -114,14 +114,14 @@ StructInfo& StructAnalyzer::addStructInfo(const StructType* st, const Module* M,
 			// deal with array
 			uint64_t arraySize = 1;
 			if (const ArrayType* arrayType = dyn_cast<ArrayType>(subType)) {
-				stInfo.addRealSize(layout->getTypeAllocSize(arrayType->getElementType()) * arrayType->getNumElements());
+				stInfo.addRealSize(layout->getTypeAllocSize(arrayType->getPointerElementType()) * arrayType->getNumElements());
 				isArray = true;
 			}
 
 			// Treat an array field as a single element of its type
 			while (const ArrayType* arrayType = dyn_cast<ArrayType>(subType)) {
 				arraySize *= arrayType->getNumElements();
-				subType = arrayType->getElementType();
+				subType = arrayType->getPointerElementType();
 			}
 			if (arraySize == 0) arraySize = 1;
 
