@@ -19,21 +19,13 @@ class CopyAnalyzerPass : public IterativeModulePass {
 private:
 
     void runOnFunction(llvm::Function*);
-    bool isCall2Alloc(std::string calleeName);
     bool isCall2Copy(std::string calleeName);
     void backwardUseAnalysis(llvm::Value *V, std::set<llvm::Value *> &DefineSet);
-    llvm::Instruction* forwardUseAnalysis(llvm::Value *V);
     void forwardAnalysis(llvm::Value *V, std::set<llvm::StoreInst *> &StoreInstSet, std::set<llvm::Value *> &TrackSet);
     llvm::Value* getOffset(llvm::GetElementPtrInst *GEP);
-    llvm::Value* removeUnaryOp(llvm::Value *I);
 
-    bool expandBinaryOp(llvm::Value *V, std::set<llvm::Value *> &OpendSet);
-    void handleGetElement(llvm::Value *V, StoreMap &SM);
-    void analyzeAlloc(llvm::CallInst* callInst);
-    void analyzeLeak(llvm::CallInst* callInst, std::string calleeName);
-    void analyzeMlen(llvm::CallInst* callInst, std::string calleeName);
-    void analyzeMptr(llvm::CallInst* callInst, std::string calleeName);
-    bool allocFromHeap(llvm::Instruction* inst);
+    void analyzeBridge(llvm::CallInst* callInst, std::string calleeName);
+    void analyzeRouter(llvm::CallInst* callInst, std::string calleeName);
     bool getAllocSite(std::vector<Value *> &argSet, std::set<CallInst *> &retSet);
 
     bool isPriviledged(llvm::Function *F);
@@ -42,23 +34,12 @@ private:
     void findLenSources(llvm::Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet);
     void findPtrSources(llvm::Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet);
     void findSources(llvm::Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet);
-    void checkChannelUsageinFunc(llvm::Value* V, llvm::Value*&, llvm::Value*&);
     void addCopyInst(StructInfo *stInfo, llvm::CallInst *callInst, unsigned offset, llvm::Instruction *I, llvm::StructType *st, unsigned argOffset);
-    void setupLeakInfo(std::vector<Value*> &srcSet, llvm::CallInst *callInst, llvm::Value *from);
     void setupLenInfo(std::vector<Value*> &lenSet, llvm::CallInst *callInst, llvm::Value *to, llvm::Value *from);
     void setupPtrInfo(std::vector<Value*> &srcSet, llvm::CallInst *callInst, llvm::Value *from);
     void setupSiteInfo(std::vector<llvm::Value*> &srcSet, StructInfo *stInfo, llvm::CallInst *callInst, unsigned offset, unsigned argOffset);
-    llvm::StructType* checkSource(std::vector<llvm::Value*>& srcSet, StructTypeSet& stSet , llvm::CallInst *CI, bool isLen);
     FuncSet getSyscalls(Function *F);
     FuncSet reachableSyscall(llvm::Function*);
-
-    // hard-coded SLAB/SLUB allocation API
-    std::vector<std::string> allocAPIVec = {
-    "__kmalloc", "__kmalloc_node", "kmalloc", "kvzalloc",
-    "kmalloc_node", "kmalloc_array", "kzalloc", "kmalloc_array_node", "kzalloc_node",
-    "kcalloc_node", "kcalloc", "kmem_cache_alloc", "kmem_cache_alloc_node", "kmem_cache_zalloc",
-    "sock_kmalloc",
-    };
 
     // hard-coded copy API
     std::vector<std::string> copyAPIVec = {

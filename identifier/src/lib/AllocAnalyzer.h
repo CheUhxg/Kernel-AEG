@@ -20,7 +20,6 @@ private:
 
     void runOnFunction(llvm::Function*);
     bool isCall2Alloc(std::string calleeName);
-    void backwardUseAnalysis(llvm::Value *V, std::set<llvm::Value *> &DefineSet);
     llvm::Instruction* forwardUseAnalysis(llvm::Value *V);
     void forwardAnalysis(llvm::Value *V, std::set<llvm::StoreInst *> &StoreInstSet, std::set<llvm::Value *> &TrackSet);
     llvm::Value* getOffset(llvm::GetElementPtrInst *GEP);
@@ -33,8 +32,6 @@ private:
 
     bool isPriviledged(llvm::Function *F);
 
-    SmallPtrSet<Value *, 16> getAliasSet(llvm::Value *V, llvm::Function *F);
-    void checkChannelUsageinFunc(llvm::Value* V, llvm::Value*&, llvm::Value*&);
     FuncSet getSyscalls(Function *F);
     FuncSet reachableSyscall(llvm::Function*);
 

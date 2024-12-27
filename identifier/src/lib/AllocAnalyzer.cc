@@ -65,12 +65,6 @@ bool AllocAnalyzerPass::doModulePass(Module* M) {
     assert(it != Ctx->moduleStructMap.end() && 
             "M is not analyzed in doInitialization");
 
-    // no flexible structure usage in this module
-    // TODO Lewis: is this a golden rule?
-    // Counter example: leak in M1, struct info in M2 and pass to M1
-    if (it->second.size() == 0)
-        return false;
-
 	for (Function &F : *M)
         runOnFunction(&F);
 
@@ -80,7 +74,7 @@ bool AllocAnalyzerPass::doModulePass(Module* M) {
 // check if the function is called by a priviledged device
 // return true if the function is priviledged.
 bool AllocAnalyzerPass::isPriviledged(llvm::Function *F) {
-    return false;
+    // return false;
     SmallVector<Function*, 4> workList;
     workList.clear();
     workList.push_back(F);
@@ -148,64 +142,6 @@ bool AllocAnalyzerPass::isCall2Alloc(std::string calleeName) {
             calleeName) != allocAPIVec.end())
         return true;
     return false;
-}
-
-void AllocAnalyzerPass::backwardUseAnalysis(llvm::Value *V, std::set<llvm::Value *> &DefineSet){
-    // TODO: handle reg2mem store load pair
-    if(auto *I = dyn_cast<Instruction>(V)){
-        KA_LOGS(2, "backward handling " << *I << "\n");
-        if(I->isBinaryOp() || dyn_cast<ICmpInst>(I)){
-            KA_LOGS(2, *I << " backward Adding " << *V << "\n");
-            DefineSet.insert(V);
-
-            for (unsigned i = 0, e = I->getNumOperands(); i != e; i++) {
-                Value* Opd = I->getOperand(i);
-                KA_LOGS(2, "backward Adding " << *V << "\n");
-                DefineSet.insert(V);
-                if (dyn_cast<ConstantInt>(Opd))
-                    continue;
-                backwardUseAnalysis(Opd, DefineSet);
-            }
-
-        } else if(dyn_cast<CallInst>(I) ||
-                      dyn_cast<SelectInst>(I)){
-            KA_LOGS(2, "backward Adding " << *V << "\n");
-            DefineSet.insert(V);
-        } else if(auto *PN = dyn_cast<PHINode>(I)){
-
-            if(DefineSet.find(V) != DefineSet.end())
-                return;
-
-            KA_LOGS(2, "backward Adding " << *V << "\n");
-            DefineSet.insert(V);
-            // aggressive analysis
-            for (unsigned i = 0, e = PN->getNumIncomingValues(); i != e; i++) {
-                Value* IV = PN->getIncomingValue(i);
-                if (dyn_cast<ConstantInt>(IV))
-                    continue;
-                backwardUseAnalysis(IV, DefineSet);
-            }
-
-        }else if(UnaryInstruction* UI = dyn_cast<UnaryInstruction>(V)){
-            KA_LOGS(2, "backward Adding " << *V << "\n");
-            DefineSet.insert(V);
-
-            backwardUseAnalysis(UI->getOperand(0), DefineSet);
-        }else if(auto *GEP = dyn_cast<GetElementPtrInst>(I)){
-            // may come from the same struct
-            KA_LOGS(2, "backward Adding " << *V << "\n");
-            DefineSet.insert(V);
-
-            backwardUseAnalysis(GEP->getOperand(0), DefineSet);
-        }else{
-            errs() << "Backward Fatal errors , please handle " << *I << "\n";
-            // exit(0);
-        }
-    }else{
-        // argument
-        KA_LOGS(2, "Backward Adding " << *V << "\n");
-        DefineSet.insert(V);
-    }
 }
 
 llvm::Value* AllocAnalyzerPass::getOffset(llvm::GetElementPtrInst *GEP){
@@ -351,7 +287,7 @@ void AllocAnalyzerPass::analyzeAlloc(llvm::CallInst* callInst) {
             }
             if (auto GEP = dyn_cast<GetElementPtrInst>(Op1)) {
                 fromGEP = GEP;
-                auto CSI = dyn_cast<ConstantInt>(fromGEP->getOperand(2));
+                auto CSI = dyn_cast<ConstantInt>(getOffset(fromGEP));
                 fromOffset = CSI->getZExtValue();
 
                 stType = dyn_cast<StructType>(fromGEP->getSourceElementType());
@@ -397,57 +333,6 @@ void AllocAnalyzerPass::analyzeAlloc(llvm::CallInst* callInst) {
         if (fromGEP) stInfo->fieldAllocGEP.insert(fromOffset);
         Ctx->keyStructMap.insert(std::make_pair(structName, stInfo));
     }
-}
-
-void AllocAnalyzerPass::checkChannelUsageinFunc(Value* V, Value*& len, Value*& buf) {
-
-    for (Value::use_iterator ui = V->use_begin(), ue = V->use_end();
-        ui != ue; ui++) {
-        if (auto* callInst = dyn_cast<CallInst>(ui->getUser())) {
-            const Function* callee = callInst->getCalledFunction();
-            if (callee == nullptr)
-                continue;
-            string calleeName = callee->getName().str();
-            if (calleeName == "__memcpy" ||
-                calleeName == "memcpy" ||
-                calleeName == "llvm.memcpy.p0i8.p0i8.i64") {
-                    len = callInst->getArgOperand(2);
-                    buf = callInst->getArgOperand(1);
-
-                    // make sure src != nla_data()
-                    if(buf == V){
-                        buf = nullptr;
-                        len = nullptr;
-                    }
-                    return ;
-            }
-
-        } else if (auto* BCI = dyn_cast<BitCastInst>(ui->getUser())) {
-            checkChannelUsageinFunc(BCI, len, buf);
-        } else if (auto* GEP = dyn_cast<GetElementPtrInst>(ui->getUser())) {
-            checkChannelUsageinFunc(GEP, len, buf);
-        }
-        
-        if (len != nullptr && buf != nullptr)
-            return;
-    }
-}
-
-SmallPtrSet<Value *, 16> AllocAnalyzerPass::getAliasSet(Value *V, Function *F){
-
-    SmallPtrSet<Value *, 16> null;
-    null.clear();
-
-    auto aliasMap = Ctx->FuncPAResults.find(F);
-    if(aliasMap == Ctx->FuncPAResults.end())
-        return null;
-
-    auto alias = aliasMap->second.find(V);
-    if(alias == aliasMap->second.end()){
-        return null;
-    }
-
-    return alias->second;
 }
 
 // join allocInstMap and copyInstMap to compute moduleStructMap

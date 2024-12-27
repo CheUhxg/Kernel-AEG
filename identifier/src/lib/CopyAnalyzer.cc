@@ -38,24 +38,6 @@ extern cl::opt<bool> IgnoreReachable;
 
 // initialize moduleStructMap
 bool CopyAnalyzerPass::doInitialization(Module* M) {
-
-    StructTypeSet structTypeSet;
-    TypeFinder usedStructTypes;
-    usedStructTypes.run(*M, false);
-
-    for (TypeFinder::iterator itr = usedStructTypes.begin(), 
-            ite = usedStructTypes.end(); itr != ite; itr++) {
-
-        StructType* st = *itr;
-        // only deal with non-opaque type
-        if (st->isOpaque()) 
-            continue;
-
-        structTypeSet.insert(st);
-    }
-
-    Ctx->moduleStructMap.insert(std::make_pair(M, structTypeSet));
-
     return false;
 }
 
@@ -66,12 +48,6 @@ bool CopyAnalyzerPass::doModulePass(Module* M) {
     assert(it != Ctx->moduleStructMap.end() && 
             "M is not analyzed in doInitialization");
 
-    // no flexible structure usage in this module
-    // TODO Lewis: is this a golden rule?
-    // Counter example: leak in M1, struct info in M2 and pass to M1
-    // if (it->second.size() == 0)
-    //     return false;
-
 	for (Function &F : *M)
         runOnFunction(&F);
 
@@ -81,7 +57,7 @@ bool CopyAnalyzerPass::doModulePass(Module* M) {
 // check if the function is called by a priviledged device
 // return true if the function is priviledged.
 bool CopyAnalyzerPass::isPriviledged(llvm::Function *F) {
-    return false;
+    // return false;
     SmallVector<Function*, 4> workList;
     workList.clear();
     workList.push_back(F);
@@ -135,24 +111,13 @@ void CopyAnalyzerPass::runOnFunction(Function *F) {
             if (callee) {
                 std::string calleeName = callee->getName().str();
                 if (isCall2Copy(calleeName)){
-                    analyzeMptr(callInst, calleeName);
-                    analyzeMlen(callInst, calleeName);
+                    analyzeRouter(callInst, calleeName);
+                    analyzeBridge(callInst, calleeName);
                 }
             }
         }
     }
     return;
-}
-
-bool CopyAnalyzerPass::isCall2Alloc(std::string calleeName) {
-    if (std::find(allocAPIVec.begin(), allocAPIVec.end(), 
-            calleeName) != allocAPIVec.end())
-        return true;
-    // else if(calleeName.find("alloc") != std::string::npos
-    //          || calleeName.find("ALLOC") != std::string::npos)
-    //     // aggressive analysis
-    //     return true;
-    return false;
 }
 
 bool CopyAnalyzerPass::isCall2Copy(std::string calleeName) {
@@ -320,7 +285,7 @@ void CopyAnalyzerPass::forwardAnalysis(llvm::Value *V,
     }
 }
 
-void CopyAnalyzerPass::analyzeMptr(llvm::CallInst* callInst, std::string calleeName) {
+void CopyAnalyzerPass::analyzeRouter(llvm::CallInst* callInst, std::string calleeName) {
     llvm::Function* F = callInst->getParent()->getParent();
 
     Value *from = nullptr;
@@ -345,15 +310,15 @@ void CopyAnalyzerPass::analyzeMptr(llvm::CallInst* callInst, std::string calleeN
     setupPtrInfo(toSet, callInst, from);
 }
 
-void CopyAnalyzerPass::analyzeMlen(llvm::CallInst* callInst, std::string calleeName) {
+Value *USER_SPACE = (Value *)0xdeadbeaf;
+
+void CopyAnalyzerPass::analyzeBridge(llvm::CallInst* callInst, std::string calleeName) {
 
     llvm::Function* F = callInst->getParent()->getParent();
-    KA_LOGS(1, "\n<<<<<<<<< Analyzing Mlen calling to " + calleeName + 
-                "() in " + F->getName().str() + "()\n");
 
     Value *len = nullptr;
-    Value *from = nullptr;
     Value *to = nullptr;
+    Value *from = nullptr;
 
     if (calleeName == "copy_from_user" ||
         calleeName == "_copy_from_user") {
@@ -364,6 +329,7 @@ void CopyAnalyzerPass::analyzeMlen(llvm::CallInst* callInst, std::string calleeN
         }
 
         len = callInst->getArgOperand(2);
+        from = USER_SPACE;
         to = callInst->getArgOperand(0);
     } else if (calleeName == "__memcpy" ||
                calleeName == "csum_and_memcpy" ||
@@ -380,11 +346,11 @@ void CopyAnalyzerPass::analyzeMlen(llvm::CallInst* callInst, std::string calleeN
     }
     else {
         RES_REPORT(calleeName << "\n");
-        assert(false && "callee is not a leak channel");
+        assert(false && "callee is not a copy channel");
     }
 
-    assert(len != nullptr && to != nullptr &&
-          "both len & to are not nullptr");
+    assert(len != nullptr && to != nullptr && from != nullptr &&
+          "both len & to & from are not nullptr");
 
     // check permission
     Function *body = callInst->getFunction();
@@ -397,26 +363,6 @@ void CopyAnalyzerPass::analyzeMlen(llvm::CallInst* callInst, std::string calleeN
     std::vector<Value *> lenSet;
     std::set<Value *> trackedSet;
     findLenSources(len, lenSet, trackedSet);
-
-    // bool allocHeap = true;
-
-    // KA_LOGS(1, "----- Tracing Src --------\n");
-    // std::vector<Value *> fromSet;
-    // std::set<CallInst *> fromAllocSet;
-    // if (from) {  // memcpy
-    //     trackedSet.clear();
-    //     findSources(from, fromSet, trackedSet);
-    //     allocHeap &= getAllocSite(fromSet, fromAllocSet);
-    // }
-
-    // KA_LOGS(1, "----- Tracing Dst --------\n");
-    // std::vector<Value *> toSet;
-    // std::set<CallInst *> toAllocSet;
-    // trackedSet.clear();
-    // findSources(to, toSet, trackedSet);
-    // allocHeap &= getAllocSite(toSet, toAllocSet);
-
-    // // if (!allocHeap) return;
 
     KA_LOGS(1, "----- Setup SiteInfo Length -------\n");
     setupLenInfo(lenSet, callInst, to, from);
@@ -476,40 +422,6 @@ bool CopyAnalyzerPass::getAllocSite(std::vector<Value *> &argSet, std::set<CallI
         }
     }
     return false;
-}
-
-void CopyAnalyzerPass::checkChannelUsageinFunc(Value* V, Value*& len, Value*& buf) {
-
-    for (Value::use_iterator ui = V->use_begin(), ue = V->use_end();
-        ui != ue; ui++) {
-        if (auto* callInst = dyn_cast<CallInst>(ui->getUser())) {
-            const Function* callee = callInst->getCalledFunction();
-            if (callee == nullptr)
-                continue;
-            string calleeName = callee->getName().str();
-            if (calleeName == "__memcpy" ||
-                calleeName == "memcpy" ||
-                calleeName == "llvm.memcpy.p0i8.p0i8.i64") {
-                    len = callInst->getArgOperand(2);
-                    buf = callInst->getArgOperand(1);
-
-                    // make sure src != nla_data()
-                    if(buf == V){
-                        buf = nullptr;
-                        len = nullptr;
-                    }
-                    return ;
-            }
-
-        } else if (auto* BCI = dyn_cast<BitCastInst>(ui->getUser())) {
-            checkChannelUsageinFunc(BCI, len, buf);
-        } else if (auto* GEP = dyn_cast<GetElementPtrInst>(ui->getUser())) {
-            checkChannelUsageinFunc(GEP, len, buf);
-        }
-        
-        if (len != nullptr && buf != nullptr)
-            return;
-    }
 }
 
 SmallPtrSet<Value *, 16> CopyAnalyzerPass::getAliasSet(Value *V, Function *F){
@@ -1017,63 +929,6 @@ void CopyAnalyzerPass::setupLenInfo(std::vector<Value*> &lenSet, CallInst *callI
     }
 }
 
-void CopyAnalyzerPass::setupLeakInfo(std::vector<Value*> &srcSet, CallInst *callInst, Value *from){
-
-
-    for (std::vector<llvm::Value*>::iterator i = srcSet.begin(), 
-         e = srcSet.end(); i != e; i++) { 
-        
-        Value *V = *i;
-
-        if(auto *LI = dyn_cast<LoadInst>(V)) {
-
-            KA_LOGS(1, "[Load] "); KA_LOGV(1, LI);
-
-            // check if it's loading a pointer
-            Type *type = LI->getPointerOperandType();
-            if(type->getPointerElementType()->isPointerTy()){
-                continue;
-            }
-
-            Value *lValue = LI->getPointerOperand();
-            while(auto *GEP = dyn_cast<GetElementPtrInst>(lValue)){
-                KA_LOGS(1, "[GEP] "); KA_LOGV(1, GEP);
-
-                // only pointer value
-                if (GEP->getNumIndices() == 1)
-                    break;
-
-                PointerType* ptrType = dyn_cast<PointerType>(GEP->getPointerOperandType());
-                assert(ptrType != nullptr);
-                Type* baseType = ptrType->getPointerElementType();
-                StructType* stType = dyn_cast<StructType>(baseType);
-                if (stType == nullptr)
-                    break;
-                
-                ConstantInt *CI = dyn_cast<ConstantInt>(GEP->getOperand(2));
-                assert(CI != nullptr && "GEP's index is not constant");
-                uint64_t offset = CI->getZExtValue();
-
-                Module* M = GEP->getModule();
-                StructInfo* stInfo = Ctx->structAnalyzer.getStructInfo(stType, M);
-
-                if(!stInfo) break;
-
-                // we found length info
-                addCopyInst(stInfo, callInst, offset, GEP, stType, 2);
-                // let's find source info
-                std::vector<Value *> srcFromSet;
-                std::set<Value *> trackedFromSet;
-                findSources(from, srcFromSet, trackedFromSet);
-                setupSiteInfo(srcFromSet, stInfo, callInst, offset, 1);
-                
-                // next loop
-                lValue = dyn_cast<Value>(GEP->getPointerOperand());
-            }
-        }
-    }
-}
-
 void CopyAnalyzerPass::setupSiteInfo(std::vector<llvm::Value*> &srcSet, 
                             StructInfo *stInfo, CallInst *callInst, unsigned offset, unsigned argOffset){
     // FIXME: plz keep tracking whether the value is from stack or heap
@@ -1289,157 +1144,6 @@ void CopyAnalyzerPass::setupSiteInfo(std::vector<llvm::Value*> &srcSet,
         }
     
     }
-}
-
-llvm::StructType* CopyAnalyzerPass::checkSource(std::vector<llvm::Value*>& srcSet, StructTypeSet& stSet , CallInst *callInst, bool isLen) {
-
-    // Heuristic 2, check source from close to remote
-    for (std::vector<llvm::Value*>::iterator i = srcSet.begin(), 
-         e = srcSet.end(); i != e; i++) {
-
-        llvm::Value* V = *i;
-
-        if (GetElementPtrInst* GEP = dyn_cast<GetElementPtrInst>(V)) {
-            
-            KA_LOGS(1, "[GEP] "); KA_LOGV(1, V);
-            
-            // only pointer value
-            if (GEP->getNumIndices() == 1)
-                continue;
-
-            PointerType* ptrType = dyn_cast<PointerType>(GEP->getPointerOperandType());
-            assert(ptrType != nullptr);
-            Type* baseType = ptrType->getPointerElementType();
-            StructType* stType = dyn_cast<StructType>(baseType);
-            if (stType == nullptr)
-                continue;
-            
-            ConstantInt *CI = dyn_cast<ConstantInt>(GEP->getOperand(2));
-            assert(CI != nullptr && "GEP's index is not constant");
-            uint64_t idx = CI->getZExtValue();
-
-            Module* M = GEP->getParent()->getParent()->getParent();
-            StructInfo* stInfo = Ctx->structAnalyzer.getStructInfo(stType, M);
-
-            if(!stInfo) continue;
-
-            addCopyInst(stInfo, callInst, idx, GEP, stType, 2);
-
-            // situation 1: return value refers to buffer in the flexible structure
-            // if (stSet.find(stType) != stSet.end()) {
-            // if (stInfo->flexibleStructFlag) {
-            //     if (isLen) {
-            //         stInfo->lenOffsetByLeakable.push_back(idx);
-            //         KA_LOGS(1, "[+] update length field offset: " << idx << "\n");
-            //         return stType;
-            //     } else if (idx == (stType->element_end() - stType->element_begin() - 1)) {
-            //         return stType;
-            //     }
-            // } else {
-            //     // situation 2: return value refers to flexible structure 
-            //     Type* idxType = stType->getPointerElementType(idx);
-            //     PointerType* ptrType = dyn_cast<PointerType>(idxType);
-            //     if (ptrType == nullptr)
-            //         continue;
-            //     Type* subType = ptrType->getPointerElementType();
-            //     StructType* subSTType = dyn_cast<StructType>(subType);
-            //     if (subSTType == nullptr)
-            //         continue;
-
-            //     stInfo = Ctx->structAnalyzer.getStructInfo(subSTType, M);
-
-            //     if(!stInfo) continue;
-
-            //     // if (stSet.find(subSTType) != stSet.end()) {
-            //     if (stInfo->flexibleStructFlag) {
-            //         if (isLen)
-            //             KA_LOGS(1, "[-] no length field update, FIXME 1\n");
-            //         return subSTType;
-            //     }
-            // }
-
-        } else if (LoadInst* LI = dyn_cast<LoadInst>(V)){
-
-            KA_LOGS(1, "[Load] "); KA_LOGV(1, V);
-
-            PointerType* ptrType = dyn_cast<PointerType>(LI->getPointerOperandType());
-            assert(ptrType != nullptr);
-            Type* baseType = ptrType->getPointerElementType();
-
-            // situation 1: pointer itself refers flexible structure
-            if (StructType* stType = dyn_cast<StructType>(baseType)) {
-
-                Module* M = LI->getParent()->getParent()->getParent();
-                StructInfo* stInfo = Ctx->structAnalyzer.getStructInfo(stType, M);
-
-                if(!stInfo) continue;
-
-                // if (stSet.find(stType) != stSet.end()) {
-                if (stInfo->flexibleStructFlag) {
-                    if (isLen)
-                        KA_LOGS(1, "[-] no length field update, FIXME 2\n");
-                    return stType;
-                }
-            } else if (PointerType* ptrType = dyn_cast<PointerType>(baseType)) {
-                KA_LOGS(1, "[-] load from a pointer\n");
-            }
-
-        } else if (BitCastInst *BCI = dyn_cast<BitCastInst>(V)) {
-            
-            KA_LOGS(1, "[BitCast] "); KA_LOGV(1, V);
-
-            PointerType* ptrType = dyn_cast<PointerType>(BCI->getSrcTy());
-            assert(ptrType != nullptr);
-            Type* baseType = ptrType->getPointerElementType();
-
-            StructType* stType = dyn_cast<StructType>(baseType);
-            if (stType == nullptr)
-                continue;
-
-            Module* M = BCI->getParent()->getParent()->getParent();
-            StructInfo* stInfo = Ctx->structAnalyzer.getStructInfo(stType, M);
-
-            if(!stInfo) continue;
-            
-            // if (stSet.find(stType) != stSet.end()) {
-            if (stInfo->flexibleStructFlag) {
-                if (isLen)
-                    KA_LOGS(1, "[-] no length field update, FIXME 3\n");
-                return stType;
-            }
-
-        } else if (Argument* A = dyn_cast<Argument>(V)) {
-
-            KA_LOGS(1, "[Arg] "); KA_LOGV(1, V);
-            
-            PointerType* ptrType = dyn_cast<PointerType>(A->getType());
-            if (ptrType == nullptr)
-                continue;
-
-            Type* baseType = ptrType->getPointerElementType();
-            StructType* stType = dyn_cast<StructType>(baseType);
-            if (stType == nullptr)
-                continue;
-            
-            Module* M = A->getParent()->getParent();
-            StructInfo* stInfo = Ctx->structAnalyzer.getStructInfo(stType, M);
-
-            if(!stInfo) continue;
-
-
-            // if (stSet.find(stType) != stSet.end()) {
-            if (stInfo->flexibleStructFlag) {
-                if (isLen)
-                    KA_LOGS(1, "[-] no length field update, FIXME 4\n");
-                return stType;
-            }
-           
-        } else {
-            KA_LOGS(1, "[-] add support for: ");
-            KA_LOGV(1, V);
-        }
-    }
-    return nullptr;
 }
 
 // join allocInstMap and copyInstMap to compute moduleStructMap
