@@ -28,10 +28,10 @@ private:
     void analyzeRouter(llvm::CallInst* callInst, std::string calleeName);
 
     bool isPriviledged(llvm::Function *F);
+    bool isAtStack(std::vector<Value *> setV);
 
     SmallPtrSet<Value *, 16> getAliasSet(llvm::Value *V, llvm::Function *F);
-    void findLenSources(llvm::Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet);
-    void findPtrSources(llvm::Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet);
+    // void findLenSources(llvm::Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet);
     void findSources(llvm::Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet);
     void addCopyInfo(StructInfo *stInfo, llvm::CallInst *callInst, unsigned offset, llvm::Instruction *I, llvm::StructType *st, unsigned argOffset);
     void setupBridgeInfo(std::vector<Value*> &lenSet, llvm::CallInst *callInst, llvm::Value *to, llvm::Value *from);

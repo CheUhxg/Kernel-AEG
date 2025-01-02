@@ -5,6 +5,7 @@
  */
 
 #include <cstddef>
+#include <llvm/IR/Argument.h>
 #include <llvm/IR/TypeFinder.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/IR/DebugInfo.h>
@@ -293,7 +294,7 @@ void CopyAnalyzerPass::analyzeRouter(llvm::CallInst* callInst, std::string calle
 
     std::vector<llvm::Value *> toSet, fromSet;
     set<llvm::Value* > trackedSet;
-    findLenSources(to, toSet, trackedSet);
+    findSources(to, toSet, trackedSet);
 
     if (calleeName == "__memcpy" ||
                calleeName == "csum_and_memcpy" ||
@@ -307,6 +308,7 @@ void CopyAnalyzerPass::analyzeRouter(llvm::CallInst* callInst, std::string calle
         return;
     }
 
+    if (isAtStack(toSet)) return;
     setupRouterInfo(toSet, callInst, from);
 }
 
@@ -362,7 +364,8 @@ void CopyAnalyzerPass::analyzeBridge(llvm::CallInst* callInst, std::string calle
     KA_LOGS(1, "----- Tracing Len --------\n");
     std::vector<Value *> lenSet;
     std::set<Value *> trackedSet;
-    findLenSources(len, lenSet, trackedSet);
+    findSources(len, lenSet, trackedSet);
+    if (isAtStack(lenSet)) return;
 
     KA_LOGS(1, "----- Setup SiteInfo Length -------\n");
     setupBridgeInfo(lenSet, callInst, to, from);
@@ -385,133 +388,99 @@ SmallPtrSet<Value *, 16> CopyAnalyzerPass::getAliasSet(Value *V, Function *F){
     return alias->second;
 }
 
-void CopyAnalyzerPass::findPtrSources(Value* V, std::vector<llvm::Value *> &srcSet,
-    std::set<llvm::Value* > &trackedSet) {
-    if (Constant* CI = dyn_cast<Constant>(V)) {
-        return;
-    } 
+// void CopyAnalyzerPass::findLenSources(Value* V, std::vector<llvm::Value *> &srcSet, 
+//     std::set<llvm::Value* > &trackedSet) {
+//     if (trackedSet.count(V) != 0) {
+//         return;
+//     }
+//     trackedSet.insert(V);
 
-    if(BitCastInst *BCI = dyn_cast<BitCastInst>(V)){
-        findPtrSources(BCI->getOperand(0), srcSet, trackedSet);
-        return;
-    }
+//     if (Constant* CI = dyn_cast<Constant>(V)) {
+//         return;
+//     }
 
-    if (LoadInst* LI = dyn_cast<LoadInst>(V)) {
+//     if (LoadInst* LI = dyn_cast<LoadInst>(V)) {
 
-        srcSet.push_back(V);
+//         srcSet.push_back(V);
 
-        // alias handling
-        Function *F = LI->getFunction();
+//         // alias handling
+//         Function *F = LI->getFunction();
 
-        if(!F) return;
+//         if(!F) return;
 
-        findPtrSources(LI->getPointerOperand(), srcSet, trackedSet);
-        return;
-    }
+//         findLenSources(LI->getPointerOperand(), srcSet, trackedSet);
+//         return;
+//     }
 
-    if (GetElementPtrInst* GEP = dyn_cast<GetElementPtrInst>(V)) {
-        srcSet.push_back(V);
-        findPtrSources(GEP->getPointerOperand(), srcSet, trackedSet);
-        return;
-    }
-}
+//     if (GetElementPtrInst* GEP = dyn_cast<GetElementPtrInst>(V)) {
+//         // TODO f**k aliases
+//         KA_LOGS(1, "Here may contain an alias, please check this\n");
+//         srcSet.push_back(V);
+//         // Heuristic 2: first GEP is enough?
+//         // Lewis: Wrong
+//         findLenSources(GEP->getPointerOperand(), srcSet, trackedSet);
+//         return;
+//     }
 
-void CopyAnalyzerPass::findLenSources(Value* V, std::vector<llvm::Value *> &srcSet, 
-    std::set<llvm::Value* > &trackedSet) {
-    if (trackedSet.count(V) != 0) {
-        return;
-    }
-    trackedSet.insert(V);
+//     // FIXME: Not examining called function inside can introduce FP
+//     // Lewis: this guess hits, add one chicken leg tonight!
+//     if (CallInst* CI = dyn_cast<CallInst>(V)) {
+//         // Storing callInst helps to check from value type
+//         srcSet.push_back(V);
+//         // Heuristic 1: calling to strlen()/vmalloc() isn't what we want
+//         const Function* callee = CI->getCalledFunction();
+//         if (callee != nullptr) {
+//             std::string calleeName = callee->getName().str();
+//             if (calleeName == "strlen"||
+//                 calleeName == "vmalloc")
+//                 return;
+//         }
 
-    if (Constant* CI = dyn_cast<Constant>(V)) {
-        return;
-    }
+//         if(!callee) return;
+//         // interprocedural analysis
+//         KA_LOGS(1, "Starting interprocedural analysis for "<<callee->getName().str()<<"\n");
+//         for(const BasicBlock &BB : *callee){
+//             for(const Instruction &I : BB){
+//                 if(const ReturnInst *RI = dyn_cast<ReturnInst>(&I)){
+//                     if(Value *rValue = RI->getReturnValue()){
+//                         findLenSources(rValue, srcSet, trackedSet);
+//                     }
+//                 }
+//             }
+//         }
+//         // comment this because interprocedural analysis will taint the interesting arguments
+//         // for (auto AI = CI->arg_begin(), E = CI->arg_end(); AI != E; AI++) {
+//         //     Value* Param = dyn_cast<Value>(&*AI);
+//         //     findSources(Param, srcSet, trackedSet);
+//         // }
+//         return;
+//     }
 
-    if (LoadInst* LI = dyn_cast<LoadInst>(V)) {
+//     if (ZExtInst* ZI = dyn_cast<ZExtInst>(V)) {
+//         findLenSources(ZI->getOperand(0), srcSet, trackedSet);
+//         return;
+//     }
 
-        srcSet.push_back(V);
+//     if (TruncInst* TI = dyn_cast<TruncInst>(V)) {
+//         findLenSources(TI->getOperand(0), srcSet, trackedSet);
+//         return;
+//     }
 
-        // alias handling
-        Function *F = LI->getFunction();
+//     if (BinaryOperator* BO = dyn_cast<BinaryOperator>(V)) {
+//         for (unsigned i = 0, e = BO->getNumOperands(); i != e; i++) {
+//             Value* Opd = BO->getOperand(i);
+//             if (dyn_cast<Constant>(Opd))
+//                 continue;
+//             findLenSources(Opd, srcSet, trackedSet);
+//         }
+//         return;
+//     }
 
-        if(!F) return;
-
-        findLenSources(LI->getPointerOperand(), srcSet, trackedSet);
-        return;
-    }
-
-    if (GetElementPtrInst* GEP = dyn_cast<GetElementPtrInst>(V)) {
-        // TODO f**k aliases
-        KA_LOGS(1, "Here may contain an alias, please check this\n");
-        srcSet.push_back(V);
-        // Heuristic 2: first GEP is enough?
-        // Lewis: Wrong
-        findLenSources(GEP->getPointerOperand(), srcSet, trackedSet);
-        return;
-    }
-
-    // FIXME: Not examining called function inside can introduce FP
-    // Lewis: this guess hits, add one chicken leg tonight!
-    if (CallInst* CI = dyn_cast<CallInst>(V)) {
-        // Storing callInst helps to check from value type
-        srcSet.push_back(V);
-        // Heuristic 1: calling to strlen()/vmalloc() isn't what we want
-        const Function* callee = CI->getCalledFunction();
-        if (callee != nullptr) {
-            std::string calleeName = callee->getName().str();
-            if (calleeName == "strlen"||
-                calleeName == "vmalloc")
-                return;
-        }
-
-        if(!callee) return;
-        // interprocedural analysis
-        KA_LOGS(1, "Starting interprocedural analysis for "<<callee->getName().str()<<"\n");
-        for(const BasicBlock &BB : *callee){
-            for(const Instruction &I : BB){
-                if(const ReturnInst *RI = dyn_cast<ReturnInst>(&I)){
-                    if(Value *rValue = RI->getReturnValue()){
-                        findLenSources(rValue, srcSet, trackedSet);
-                    }
-                }
-            }
-        }
-        // comment this because interprocedural analysis will taint the interesting arguments
-        // for (auto AI = CI->arg_begin(), E = CI->arg_end(); AI != E; AI++) {
-        //     Value* Param = dyn_cast<Value>(&*AI);
-        //     findSources(Param, srcSet, trackedSet);
-        // }
-        return;
-    }
-
-    if (ZExtInst* ZI = dyn_cast<ZExtInst>(V)) {
-        findLenSources(ZI->getOperand(0), srcSet, trackedSet);
-        return;
-    }
-
-    if (TruncInst* TI = dyn_cast<TruncInst>(V)) {
-        findLenSources(TI->getOperand(0), srcSet, trackedSet);
-        return;
-    }
-
-    if (BinaryOperator* BO = dyn_cast<BinaryOperator>(V)) {
-        for (unsigned i = 0, e = BO->getNumOperands(); i != e; i++) {
-            Value* Opd = BO->getOperand(i);
-            if (dyn_cast<Constant>(Opd))
-                continue;
-            findLenSources(Opd, srcSet, trackedSet);
-        }
-        return;
-    }
-
-    return;
-}
+//     return;
+// }
 
 void CopyAnalyzerPass::findSources(Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet) {
 
-    // Lewis: hard coded boundary to save time 
-    // and avoid stack overflow, I mean that "overflow", hahaha
-    // TODO: solve alias in current function
     if (trackedSet.count(V) != 0
         //  || trackedSet.size() >= 8000
         )
@@ -520,8 +489,6 @@ void CopyAnalyzerPass::findSources(Value* V, std::vector<llvm::Value *> &srcSet,
     trackedSet.insert(V);
     KA_LOGS(2, "FindSource: Adding ");KA_LOGV(2, V);
 
-    // FIXME: Not examining called function inside can introduce FP
-    // Lewis: this guess hits, add one chicken leg tonight!
     if (CallInst* CI = dyn_cast<CallInst>(V)) {
         // Storing callInst helps to check from value type
         srcSet.push_back(V);
@@ -732,6 +699,7 @@ void CopyAnalyzerPass::addCopyInfo(StructInfo *stInfo, llvm::CallInst *callInst,
 
     KeyStructMap::iterator it = Ctx->keyStructMap.find(stInfo->name);
     if(it == Ctx->keyStructMap.end()){
+        KA_LOGS(0, "[DEBUG] no struct: " << stInfo->name << "(add it)\n");
         Ctx->keyStructMap.insert(std::make_pair(stInfo->name, stInfo));
     }
 
@@ -746,9 +714,9 @@ void CopyAnalyzerPass::addCopyInfo(StructInfo *stInfo, llvm::CallInst *callInst,
 
 }
 
-void CopyAnalyzerPass::setupRouterInfo(std::vector<Value*> &srcSet, CallInst *callInst, Value *from){
-    for (std::vector<llvm::Value*>::iterator i = srcSet.begin(), 
-         e = srcSet.end(); i != e; i++) { 
+void CopyAnalyzerPass::setupRouterInfo(std::vector<Value*> &toSet, CallInst *callInst, Value *from){
+    for (std::vector<llvm::Value*>::iterator i = toSet.begin(), 
+         e = toSet.end(); i != e; i++) { 
         
         Value *V = *i;
 
@@ -784,21 +752,31 @@ void CopyAnalyzerPass::setupRouterInfo(std::vector<Value*> &srcSet, CallInst *ca
                 Module* M = GEP->getModule();
                 StructInfo* stInfo = Ctx->structAnalyzer.getStructInfo(stType, M);
 
-                if(!stInfo) break;
+                if(!stInfo || 
+                    stInfo->fieldAllocGEP.count(offset) == 0) break;
 
-                // check whether the field is allocated on the heap.
-                if (stInfo->fieldAllocGEP.count(GEP->getNumIndices()) == 0) break;
+                bool isRouter = true;
+                if (from) {
+                    std::vector<Value *> srcFromSet;
+                    std::set<Value *> trackedFromSet;
+                    findSources(from, srcFromSet, trackedFromSet);
 
-                // we found pointer info
-                addCopyInfo(stInfo, callInst, offset, GEP, stType, 0);
-
-                if (!from) break;
-                // let's find source info
-                std::vector<Value *> srcFromSet;
-                std::set<Value *> trackedFromSet;
-                findSources(from, srcFromSet, trackedFromSet);
-                setupSiteInfo(srcFromSet, stInfo, callInst, offset, 1);
+                    isRouter = false;
+                    for (auto V : toSet) {
+                        if (dyn_cast<Argument>(V))
+                            break;
+                        if (std::find(srcFromSet.begin(), srcFromSet.end(), V)
+                            != srcFromSet.end()) {  // intersect between from and to.
+                            setupSiteInfo(srcFromSet, stInfo, callInst, offset, 1);
+                            isRouter = true;
+                            break;
+                        }
+                    }
+                }
                 
+                if (isRouter)
+                    addCopyInfo(stInfo, callInst, offset, GEP, stType, 0);
+
                 // next loop
                 lValue = dyn_cast<Value>(GEP->getPointerOperand());
             }
@@ -850,19 +828,25 @@ void CopyAnalyzerPass::setupBridgeInfo(std::vector<Value*> &lenSet, CallInst *ca
 
                 if(!stInfo) break;
 
-                // we found length info
-                addCopyInfo(stInfo, callInst, offset, GEP, stType, 2);
-
                 std::vector<Value *> srcFromSet;
                 std::set<Value *> trackedFromSet;
-                if (from != USER_SPACE)
+                if (from != USER_SPACE) {
                     findSources(from, srcFromSet, trackedFromSet);
-                setupSiteInfo(srcFromSet, stInfo, callInst, offset, 1);
+                    if (isAtStack(srcFromSet)) from = nullptr;
+                }
 
                 std::vector<Value *> srcToSet;
                 std::set<Value *> trackedToSet;
-                if (to != nullptr)
+                if (to != nullptr) {
                     findSources(to, srcToSet, trackedToSet);
+                    if (isAtStack(srcToSet)) to = nullptr;
+                }
+
+                if (!to || !from) break;
+
+                // we found length info
+                addCopyInfo(stInfo, callInst, offset, GEP, stType, 2);
+                setupSiteInfo(srcFromSet, stInfo, callInst, offset, 1);
                 setupSiteInfo(srcToSet, stInfo, callInst, offset, 0);
 
                 // next loop
@@ -870,6 +854,17 @@ void CopyAnalyzerPass::setupBridgeInfo(std::vector<Value*> &lenSet, CallInst *ca
             }
         }
     }
+}
+
+bool CopyAnalyzerPass::isAtStack(std::vector<Value *> setV) {
+    for (auto V : setV) {
+        if (auto AI = dyn_cast<AllocaInst>(V)) {
+            KA_LOGS(1, "[AI ] " << *AI << "\n");
+            if (!AI->getAllocatedType()->isPointerTy())
+                return true;
+        }
+    }
+    return false;
 }
 
 void CopyAnalyzerPass::setupSiteInfo(std::vector<llvm::Value*> &srcSet, 

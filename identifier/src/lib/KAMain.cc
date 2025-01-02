@@ -66,6 +66,10 @@ cl::opt<bool> IgnoreReachable(
     "ignore-reachable", cl::desc("Ignore whether the function is reachable from syscall"),
     cl::NotHidden, cl::init(false));
 
+cl::opt<std::string> OutputDir(
+    "output-dir", cl::desc("Specify the output directory for generated files"),
+    cl::value_desc("directory"), cl::init("./"));
+
 GlobalContext GlobalCtx;
 
 void IterativeModulePass::run(ModuleList &modules) {

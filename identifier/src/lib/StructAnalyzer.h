@@ -27,6 +27,8 @@
 using namespace llvm;
 using namespace std;
 
+extern cl::opt<std::string> OutputDir;
+
 // Every struct type T is mapped to the vectors fieldSize and offsetMap.
 // If field [i] in the expanded struct T begins an embedded struct, fieldSize[i] is the # of fields in the largest such struct, else S[i] = 1.
 // Also, if a field has index (j) in the original struct, it has index offsetMap[j] in the expanded struct.
@@ -331,8 +333,6 @@ public:
 		siteInfo.dumpTo();
 	}
 
-    const string JsonDir = "/home/user/Tools/w2l/code/out/defdebug/dumpResults/";
-
 	void dumpStructInfo(bool dumpAllocable){
 
 		if(dumpAllocable && allocaInst.size() == 0)
@@ -409,21 +409,9 @@ public:
 		jsonStream.flush();
 
 		error_code EC;
-		llvm::raw_fd_ostream fileOutput(JsonDir+name+".json", EC);
+		llvm::raw_fd_ostream fileOutput(OutputDir+name+".json", EC);
     	fileOutput << jsonString;
 		fileOutput.flush();
-	}
-
-
-	void dump(){
-		if(copyInfo.size() == 0)
-			return;
-		dumpStructInfo(true);
-		KA_LOGS(0, "\n\n");
-	}
-
-	void dumpAll(){
-		dumpStructInfo(false);
 	}
 
     void dumpCopyChecks() {
