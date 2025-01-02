@@ -127,8 +127,6 @@ public:
 
     /****************** Flexible Structural Object Identification **************/
     bool flexibleStructFlag;
-    std::vector<unsigned> lenOffsetByFlexible; // TODO fill this vector in flexible part
-    std::vector<unsigned> lenOffsetByLeakable; // TODO fill this vector in leakable part
     /**************** End Flexible Structural Object Identification ************/
 
 	// external information
@@ -160,7 +158,7 @@ public:
 		llvm::Value *fromValue=nullptr;
 		llvm::StructType *lenSt=nullptr;
 		llvm::Value *lenValue=nullptr;
-        CheckMap leakCheckMap; // usage of all fields before leaking
+        CheckMap copyCheckMap; // usage of all fields before copying
 
 		void dumpLen() {
 			if(this->lenValue && this->lenSt){
@@ -270,24 +268,24 @@ public:
 			}
 		}
 	};
-	// differents values represent different leaking sites
+	// differents values represent different copying sites
 	// value here equals call copyout(to, from, len);
-	typedef std::unordered_map<llvm::Value *, SiteInfo> LeakSourceInfo;
-	// len offset and leakInfo
-	typedef std::unordered_map<unsigned, LeakSourceInfo> LeakInfo;
+	typedef std::unordered_map<llvm::Value *, SiteInfo> CopySourceInfo;
+	// len offset and copyInfo
+	typedef std::unordered_map<unsigned, CopySourceInfo> CopyInfo;
 
-	LeakInfo leakInfo;
+	CopyInfo copyInfo;
 
-	void addLeakSourceInfo(unsigned offset, llvm::Value *V, SiteInfo siteInfo){
+	void addCopySourceInfo(unsigned offset, llvm::Value *V, SiteInfo siteInfo){
 
-		if(leakInfo.find(offset) == leakInfo.end()){
-			LeakSourceInfo LSI;
+		if(copyInfo.find(offset) == copyInfo.end()){
+			CopySourceInfo LSI;
 			LSI.insert(std::make_pair(V, siteInfo));
-			leakInfo.insert(std::make_pair(offset, LSI));
+			copyInfo.insert(std::make_pair(offset, LSI));
 			return;
 		}
 
-		LeakInfo::iterator it = leakInfo.find(offset);
+		CopyInfo::iterator it = copyInfo.find(offset);
 
 		if(it->second.find(V) == it->second.end()){
 			it->second.insert(std::make_pair(V, siteInfo));
@@ -297,23 +295,23 @@ public:
 		WARNING("Are we trying to update siteInfo?");
 		assert(false && "BUG?");
 
-		LeakSourceInfo::iterator sit = it->second.find(V);
+		CopySourceInfo::iterator sit = it->second.find(V);
 		sit->second = siteInfo;
 	}
 
 	SiteInfo *getSiteInfo(unsigned offset, llvm::Value *V){
 
-		if(leakInfo.find(offset) == leakInfo.end()){
+		if(copyInfo.find(offset) == copyInfo.end()){
 			return nullptr;
 		}
 
-		LeakInfo::iterator it = leakInfo.find(offset);
+		CopyInfo::iterator it = copyInfo.find(offset);
 
 		if(it->second.find(V) == it->second.end()){
 			return nullptr;
 		}
 
-		LeakSourceInfo::iterator sit = it->second.find(V);
+		CopySourceInfo::iterator sit = it->second.find(V);
 		return &sit->second;
 	}
 
@@ -335,7 +333,7 @@ public:
 
     const string JsonDir = "/home/user/Tools/w2l/code/out/defdebug/dumpResults/";
 
-	void dumpLeakInfo(bool dumpAllocable){
+	void dumpStructInfo(bool dumpAllocable){
 
 		if(dumpAllocable && allocaInst.size() == 0)
 			return;
@@ -353,11 +351,11 @@ public:
 			// KA_LOGS(0, "\n");
 		}
 		KA_LOGS(0,"CopyInst:\n");
-		for( auto const &leak : leakInfo){
+		for( auto const &copy : copyInfo){
 			
-			unsigned offset = leak.first;
+			unsigned offset = copy.first;
 			
-			for ( auto const &source : leak.second){
+			for ( auto const &source : copy.second){
 
 				Instruction *I = dyn_cast<Instruction>(source.first);
 				copyArr.push_back(I->getFunction()->getName().str());
@@ -365,17 +363,17 @@ public:
 				{
 				case STACK:
 					DEBUG_Inst(0, dyn_cast<Instruction>(source.first));
-					KA_LOGS(0, " Leaking from STACK at offset : " << offset << "\n");
+					KA_LOGS(0, " Copying from STACK at offset : " << offset << "\n");
 					break;
 
 				case HEAP_SAME_OBJ:
 					DEBUG_Inst(0, dyn_cast<Instruction>(source.first));
-					KA_LOGS(0, " Leaking from the same object in the HEAP at offset : " << offset << "\n");
+					KA_LOGS(0, " Copying from the same object in the HEAP at offset : " << offset << "\n");
 					break;
 
 				case HEAP_DIFF_OBJ:
 					DEBUG_Inst(0, dyn_cast<Instruction>(source.first));
-					KA_LOGS(0, " Leaking from the different object in the HEAP at offset : " << offset << "\n");
+					KA_LOGS(0, " Copying from the different object in the HEAP at offset : " << offset << "\n");
 					break;
 				
 				default:
@@ -418,43 +416,43 @@ public:
 
 
 	void dump(){
-		if(leakInfo.size() == 0)
+		if(copyInfo.size() == 0)
 			return;
-		dumpLeakInfo(true);
+		dumpStructInfo(true);
 		KA_LOGS(0, "\n\n");
 	}
 
 	void dumpAll(){
-		dumpLeakInfo(false);
+		dumpStructInfo(false);
 	}
 
-    void dumpLeakChecks() {
+    void dumpCopyChecks() {
         if (allocaInst.size() == 0)
             return;
         RES_REPORT("[+] "<<name<<"\n");
 
-        for (auto const &leak : leakInfo) {
-            unsigned offset = leak.first;
-            LeakSourceInfo leakSrcInfo = leak.second;
+        for (auto const &copy : copyInfo) {
+            unsigned offset = copy.first;
+            CopySourceInfo copySrcInfo = copy.second;
             RES_REPORT("<<<<<<<<<<<<<<<<< Length offset: " << offset << " >>>>>>>>>>>>>>>>\n");
-            for ( auto const &srcInfo : leakSrcInfo){
-                Instruction* leakSite = dyn_cast<Instruction>(srcInfo.first);
+            for ( auto const &srcInfo : copySrcInfo){
+                Instruction* copySite = dyn_cast<Instruction>(srcInfo.first);
                 SiteInfo siteInfo = srcInfo.second;
                 Value* lenValue = siteInfo.lenValue;
                 Instruction* retrieveLenInst = dyn_cast<Instruction>(lenValue);
 
-                if (leakSite == nullptr || retrieveLenInst == nullptr)
+                if (copySite == nullptr || retrieveLenInst == nullptr)
                     continue;
 
                 RES_REPORT("=================== Retrieve Site =================\n"); 
                 DEBUG_Inst(0, retrieveLenInst);
 
-                RES_REPORT("=================== Leak Site =================\n"); 
+                RES_REPORT("=================== Copy Site =================\n"); 
                 // e.g., copyout
-                DEBUG_Inst(0, leakSite);
+                DEBUG_Inst(0, copySite);
 
                 RES_REPORT("=================== Checks ===================\n");
-                for (auto checkMap : siteInfo.leakCheckMap) {
+                for (auto checkMap : siteInfo.copyCheckMap) {
                     string offset = checkMap.first;
                     CheckInfo checkInfo = checkMap.second;
 
@@ -608,9 +606,9 @@ public:
 			return;
 
 		// RES_REPORT("[+] "<<name<<"\n");
-		for( auto const &leak : leakInfo){
+		for( auto const &copy : copyInfo){
 
-			unsigned offset = leak.first;
+			unsigned offset = copy.first;
 			// RES_REPORT(name << " " << offset << "\n");
 			outs() << name << " " << offset << "\n";
 			

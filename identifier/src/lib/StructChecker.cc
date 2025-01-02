@@ -51,12 +51,12 @@ bool StructCheckerPass::doModulePass(Module* M) {
         if (it == Ctx->keyStructMap.end())
             continue;
         StructInfo* structInfo = it->second;
-        for (auto &leak : structInfo->leakInfo) {
-            for (auto &srcInfo : leak.second) {
-                Instruction* leakSite = dyn_cast<Instruction>(srcInfo.first);                
+        for (auto &copy : structInfo->copyInfo) {
+            for (auto &srcInfo : copy.second) {
+                Instruction* copySite = dyn_cast<Instruction>(srcInfo.first);                
                 StructInfo::SiteInfo& siteInfo = srcInfo.second;
-                // leak site is an instruction
-                if (leakSite == nullptr)
+                // copy site is an instruction
+                if (copySite == nullptr)
                     continue;
 
                 Value* lenValue = siteInfo.lenValue;
@@ -83,7 +83,7 @@ bool StructCheckerPass::doModulePass(Module* M) {
                     ui != ue; ui++) {
                     Instruction* I = dyn_cast<Instruction>(ui->getUser());
                     SrcSlice tracedV;
-                    collectChecks(siteInfo, I, leakSite, base, "", 0, tracedV);
+                    collectChecks(siteInfo, I, copySite, base, "", 0, tracedV);
                 }
 
                 SmallPtrSet<Value*, 16> aliasPtrSet = 
@@ -93,7 +93,7 @@ bool StructCheckerPass::doModulePass(Module* M) {
                         ui != ue; ui++) {
                         Instruction* I = dyn_cast<Instruction>(ui->getUser());
                         SrcSlice tracedV;
-                        collectChecks(siteInfo, I, leakSite, V, "", 0, tracedV);
+                        collectChecks(siteInfo, I, copySite, V, "", 0, tracedV);
                     }
                 }
             }
@@ -105,7 +105,7 @@ bool StructCheckerPass::doModulePass(Module* M) {
 void StructCheckerPass::collectChecks(
     StructInfo::SiteInfo& siteInfo, 
     Instruction* I, 
-    Instruction* leakSite, 
+    Instruction* copySite, 
     Value* V,
     string offset, 
     unsigned loadDep,
@@ -138,7 +138,7 @@ void StructCheckerPass::collectChecks(
         for (Value::use_iterator ui = GEP->use_begin(), ue = GEP->use_end();
             ui != ue; ui++) {
             Instruction* I = dyn_cast<Instruction>(ui->getUser());
-            collectChecks(siteInfo, I, leakSite, GEP, offset, loadDep, tracedV);
+            collectChecks(siteInfo, I, copySite, GEP, offset, loadDep, tracedV);
         }
         return;
     }
@@ -150,18 +150,18 @@ void StructCheckerPass::collectChecks(
         }
         if (loadDep == 1) // one load to access structure field
             return;
-        unsigned reachableRet = isReachable(I->getParent(), leakSite->getParent());
+        unsigned reachableRet = isReachable(I->getParent(), copySite->getParent());
         if (reachableRet == 0) { // skip not reachable Inst
             return;
         }
 
         // add this LI usage to siteInfo
         StructInfo::CheckSrc checkSrc; // Note LI has no check
-        StructInfo::CheckMap::iterator it = siteInfo.leakCheckMap.find(offset);
-        if (it == siteInfo.leakCheckMap.end()) {
+        StructInfo::CheckMap::iterator it = siteInfo.copyCheckMap.find(offset);
+        if (it == siteInfo.copyCheckMap.end()) {
             StructInfo::CheckInfo checkInfo;
             checkInfo.insert(std::make_pair(I, checkSrc));
-            siteInfo.leakCheckMap.insert(std::make_pair(offset, checkInfo));
+            siteInfo.copyCheckMap.insert(std::make_pair(offset, checkInfo));
         } else {
             it->second.insert(std::make_pair(I, checkSrc));
         }
@@ -170,7 +170,7 @@ void StructCheckerPass::collectChecks(
         for (Value::use_iterator ui = LI->use_begin(), ue = LI->use_end();
             ui != ue; ui++) {
             Instruction* I = dyn_cast<Instruction>(ui->getUser());
-            collectChecks(siteInfo, I, leakSite, LI, offset, 1, tracedV);
+            collectChecks(siteInfo, I, copySite, LI, offset, 1, tracedV);
         }
         return;
     }
@@ -182,12 +182,12 @@ void StructCheckerPass::collectChecks(
             return;
         unsigned reachableTrueRet, reachableFalseRet;
         if (BI->isUnconditional()) {
-            reachableTrueRet = isReachable(BI->getSuccessor(0), leakSite->getParent());
+            reachableTrueRet = isReachable(BI->getSuccessor(0), copySite->getParent());
             reachableFalseRet = reachableTrueRet;
         } else if (BI->isConditional()) {
             assert(BI->getNumSuccessors() == 2);
-            reachableTrueRet = isReachable(BI->getSuccessor(0), leakSite->getParent());
-            reachableFalseRet = isReachable(BI->getSuccessor(1), leakSite->getParent());
+            reachableTrueRet = isReachable(BI->getSuccessor(0), copySite->getParent());
+            reachableFalseRet = isReachable(BI->getSuccessor(1), copySite->getParent());
         }
 
         if (reachableTrueRet == 0 && reachableFalseRet == 0) { // not reachable
@@ -213,11 +213,11 @@ void StructCheckerPass::collectChecks(
             checkSrc.branchTaken = 2;
 
         // add this ICmp comparison to siteInfo
-        StructInfo::CheckMap::iterator it = siteInfo.leakCheckMap.find(offset);
-        if (it == siteInfo.leakCheckMap.end()) {
+        StructInfo::CheckMap::iterator it = siteInfo.copyCheckMap.find(offset);
+        if (it == siteInfo.copyCheckMap.end()) {
             StructInfo::CheckInfo checkInfo;
             checkInfo.insert(std::make_pair(I, checkSrc));
-            siteInfo.leakCheckMap.insert(std::make_pair(offset, checkInfo));
+            siteInfo.copyCheckMap.insert(std::make_pair(offset, checkInfo));
         } else {
             it->second.insert(std::make_pair(I, checkSrc));
         }
@@ -249,7 +249,7 @@ void StructCheckerPass::collectChecks(
             for (Value::use_iterator ui = A->use_begin(), ue = A->use_end();
                 ui != ue; ui++) {
                 Instruction* I = dyn_cast<Instruction>(ui->getUser());
-                collectChecks(siteInfo, I, leakSite, A, offset, loadDep, tracedV);
+                collectChecks(siteInfo, I, copySite, A, offset, loadDep, tracedV);
             }
         }
         return;
@@ -260,7 +260,7 @@ void StructCheckerPass::collectChecks(
         for (Value::use_iterator ui = BO->use_begin(), ue = BO->use_end();
             ui != ue; ui++) {
             Instruction* I = dyn_cast<Instruction>(ui->getUser());
-            collectChecks(siteInfo, I, leakSite, BO, offset, loadDep, tracedV);
+            collectChecks(siteInfo, I, copySite, BO, offset, loadDep, tracedV);
         }
         return;
     }
@@ -270,7 +270,7 @@ void StructCheckerPass::collectChecks(
         for (Value::use_iterator ui = UI->use_begin(), ue = UI->use_end();
             ui != ue; ui++) {
             Instruction* I = dyn_cast<Instruction>(ui->getUser());
-            collectChecks(siteInfo, I, leakSite, UI, offset, loadDep, tracedV);
+            collectChecks(siteInfo, I, copySite, UI, offset, loadDep, tracedV);
         }
         return;
     }
@@ -279,7 +279,7 @@ void StructCheckerPass::collectChecks(
         for (Value::use_iterator ui = SI->use_begin(), ue = SI->use_end();
             ui != ue; ui++) {
             Instruction* I = dyn_cast<Instruction>(ui->getUser());
-            collectChecks(siteInfo, I, leakSite, SI, offset, loadDep, tracedV);
+            collectChecks(siteInfo, I, copySite, SI, offset, loadDep, tracedV);
         }
         return;
     }
@@ -288,7 +288,7 @@ void StructCheckerPass::collectChecks(
         for (Value::use_iterator ui = PN->use_begin(), ue = PN->use_end();
             ui != ue; ui++) {
             Instruction* I = dyn_cast<Instruction>(ui->getUser());
-            collectChecks(siteInfo, I, leakSite, PN, offset, loadDep, tracedV);
+            collectChecks(siteInfo, I, copySite, PN, offset, loadDep, tracedV);
         }
         return;
     }
@@ -462,12 +462,12 @@ SmallPtrSet<Value*, 16> StructCheckerPass::getAliasSet(Value* V, Function* F) {
 }
 
 void StructCheckerPass::dumpChecks() {
-    RES_REPORT("\n=========  printing leaker constraints===========\n");
-    for (auto leaker : Ctx->keyStructMap) {
-        StructInfo *st = leaker.second;
-        if(st->leakInfo.size() == 0)
+    RES_REPORT("\n=========  printing copyer constraints===========\n");
+    for (auto copyer : Ctx->keyStructMap) {
+        StructInfo *st = copyer.second;
+        if(st->copyInfo.size() == 0)
             continue;
-        st->dumpLeakChecks();
+        st->dumpCopyChecks();
     }
-    RES_REPORT("\n======= end printing leaker constraints ==========\n");
+    RES_REPORT("\n======= end printing copyer constraints ==========\n");
 }

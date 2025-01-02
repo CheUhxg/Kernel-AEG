@@ -26,7 +26,6 @@ private:
 
     void analyzeBridge(llvm::CallInst* callInst, std::string calleeName);
     void analyzeRouter(llvm::CallInst* callInst, std::string calleeName);
-    bool getAllocSite(std::vector<Value *> &argSet, std::set<CallInst *> &retSet);
 
     bool isPriviledged(llvm::Function *F);
 
@@ -34,9 +33,9 @@ private:
     void findLenSources(llvm::Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet);
     void findPtrSources(llvm::Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet);
     void findSources(llvm::Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet);
-    void addCopyInst(StructInfo *stInfo, llvm::CallInst *callInst, unsigned offset, llvm::Instruction *I, llvm::StructType *st, unsigned argOffset);
-    void setupLenInfo(std::vector<Value*> &lenSet, llvm::CallInst *callInst, llvm::Value *to, llvm::Value *from);
-    void setupPtrInfo(std::vector<Value*> &srcSet, llvm::CallInst *callInst, llvm::Value *from);
+    void addCopyInfo(StructInfo *stInfo, llvm::CallInst *callInst, unsigned offset, llvm::Instruction *I, llvm::StructType *st, unsigned argOffset);
+    void setupBridgeInfo(std::vector<Value*> &lenSet, llvm::CallInst *callInst, llvm::Value *to, llvm::Value *from);
+    void setupRouterInfo(std::vector<Value*> &srcSet, llvm::CallInst *callInst, llvm::Value *from);
     void setupSiteInfo(std::vector<llvm::Value*> &srcSet, StructInfo *stInfo, llvm::CallInst *callInst, unsigned offset, unsigned argOffset);
     FuncSet getSyscalls(Function *F);
     FuncSet reachableSyscall(llvm::Function*);

@@ -58,7 +58,7 @@ bool AllocAnalyzerPass::doInitialization(Module* M) {
     return false;
 }
 
-// determine "allocable" and "leakable" to compute allocInstMap and copyInstMap
+// determine "allocable" and "copyable" to compute allocInstMap and copyInstMap
 bool AllocAnalyzerPass::doModulePass(Module* M) {
 
     ModuleStructMap::iterator it = Ctx->moduleStructMap.find(M);
@@ -105,7 +105,7 @@ bool AllocAnalyzerPass::isPriviledged(llvm::Function *F) {
 }
 
 
-// start analysis from calling to allocation or leak functions
+// start analysis from calling to allocation or copy functions
 void AllocAnalyzerPass::runOnFunction(Function *F) {
     if(!IgnoreReachable){
         FuncSet Syscalls = reachableSyscall(F);
@@ -363,7 +363,7 @@ bool AllocAnalyzerPass::doFinalization(Module* M) {
         InstMap::iterator liit = Ctx->copyInstMap.find(structName);
         // AllocInstMap::iterator aiit = Ctx->allocInstMap.find(structName);
 
-        // either leak or alloc or both
+        // either copy or alloc or both
         if (liit == Ctx->copyInstMap.end() )
             //  || aiit == Ctx->allocInstMap.end() )
             Ctx->moduleStructMap[M].erase(st);
@@ -394,7 +394,7 @@ bool AllocAnalyzerPass::doFinalization(Module* M) {
     }
 
     KA_LOGS(1, "Building copySyscallMap & allocSyscallMap ...\n");
-    // copySyscallMap: map structName to syscall reaching leak sites
+    // copySyscallMap: map structName to syscall reaching copy sites
     // allocSyscallMap: map structName to syscall reaching allocation sites
     for (StructTypeSet::iterator itr = Ctx->moduleStructMap[M].begin(),
             ite = Ctx->moduleStructMap[M].end(); itr != ite; itr++) {
@@ -403,7 +403,7 @@ bool AllocAnalyzerPass::doFinalization(Module* M) {
         std::string structName = getScopeName(st, M);
 
         // copySyscallMap
-        KA_LOGS(1, "Dealing with leaking: " << structName << "\n");
+        KA_LOGS(1, "Dealing with copying: " << structName << "\n");
         InstMap::iterator liit = Ctx->copyInstMap.find(structName);
         SyscallMap::iterator lsit = Ctx->copySyscallMap.find(structName);
         if (liit != Ctx->copyInstMap.end() &&

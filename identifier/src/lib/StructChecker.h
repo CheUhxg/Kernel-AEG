@@ -43,7 +43,7 @@ private:
     void collectChecks(
         StructInfo::SiteInfo& siteInfo, 
         Instruction* I, 
-        Instruction* leakSite, 
+        Instruction* copySite, 
         Value* V,
         string offset, 
         unsigned loadDep,

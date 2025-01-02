@@ -47,19 +47,19 @@ cl::opt<unsigned> VerboseLevel(
     cl::init(0));
 
 cl::opt<bool> DumpKeyStructs(
-    "dump-leakers", cl::desc("Dump leakers"), cl::NotHidden, cl::init(false));
+    "dump-keystructs", cl::desc("Dump keystructs"), cl::NotHidden, cl::init(false));
 
 cl::opt<bool> DumpFlexibleStruts(
     "dump-flexible-st", cl::desc("Dump flexible st"), cl::NotHidden, cl::init(false));
 
 cl::opt<bool> AnalyzeKeyStructs(
-    "check-leakers", cl::desc("Analyze leakers"), cl::NotHidden, cl::init(false));
+    "check-keystructs", cl::desc("Analyze keystructs"), cl::NotHidden, cl::init(false));
 
 cl::opt<bool> DumpAlias(
     "dump-alias", cl::desc("Dump alias"), cl::NotHidden, cl::init(false));
 
 cl::opt<bool> DumpSimplified(
-    "dump-simple", cl::desc("Dump simplified leakers"), cl::NotHidden,
+    "dump-simple", cl::desc("Dump simplified keystructs"), cl::NotHidden,
     cl::init(false));
 
 cl::opt<bool> IgnoreReachable(

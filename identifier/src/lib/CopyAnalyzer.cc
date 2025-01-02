@@ -41,7 +41,7 @@ bool CopyAnalyzerPass::doInitialization(Module* M) {
     return false;
 }
 
-// determine "allocable" and "leakable" to compute allocInstMap and copyInstMap
+// determine "allocable" and "copyable" to compute allocInstMap and copyInstMap
 bool CopyAnalyzerPass::doModulePass(Module* M) {
 
     ModuleStructMap::iterator it = Ctx->moduleStructMap.find(M);
@@ -88,7 +88,7 @@ bool CopyAnalyzerPass::isPriviledged(llvm::Function *F) {
 }
 
 
-// start analysis from calling to allocation or leak functions
+// start analysis from calling to allocation or copy functions
 void CopyAnalyzerPass::runOnFunction(Function *F) {
     if(!IgnoreReachable){
         FuncSet Syscalls = reachableSyscall(F);
@@ -307,7 +307,7 @@ void CopyAnalyzerPass::analyzeRouter(llvm::CallInst* callInst, std::string calle
         return;
     }
 
-    setupPtrInfo(toSet, callInst, from);
+    setupRouterInfo(toSet, callInst, from);
 }
 
 Value *USER_SPACE = (Value *)0xdeadbeaf;
@@ -355,7 +355,7 @@ void CopyAnalyzerPass::analyzeBridge(llvm::CallInst* callInst, std::string calle
     // check permission
     Function *body = callInst->getFunction();
     if (isPriviledged(body)) {
-        outs() << body->getName() << " is priviledged function for leaking\n";
+        outs() << body->getName() << " is priviledged function for copying\n";
         return;
     }
 
@@ -365,63 +365,7 @@ void CopyAnalyzerPass::analyzeBridge(llvm::CallInst* callInst, std::string calle
     findLenSources(len, lenSet, trackedSet);
 
     KA_LOGS(1, "----- Setup SiteInfo Length -------\n");
-    setupLenInfo(lenSet, callInst, to, from);
-}
-
-bool CopyAnalyzerPass::getAllocSite(std::vector<Value *> &argSet, std::set<CallInst *> &retSet) {
-    for (auto *V : argSet) {
-        // data from some object
-        // if (auto *LI = dyn_cast<LoadInst>(V)) {
-        //     Type *type = LI->getPointerOperandType();
-        //     Value *lValue = LI->getPointerOperand();
-            // while(auto *GEP = dyn_cast<GetElementPtrInst>(lValue)){
-            while(auto *GEP = dyn_cast<GetElementPtrInst>(V)){
-                // only pointer value
-                if (GEP->getNumIndices() == 1)
-                    break; 
-
-                PointerType* ptrType = dyn_cast<PointerType>(GEP->getPointerOperandType());
-                assert(ptrType != nullptr);
-                Type* baseType = ptrType->getPointerElementType();
-                StructType* stType = dyn_cast<StructType>(baseType);
-                if (stType == nullptr)
-                    break;
-                ConstantInt *CI = dyn_cast<ConstantInt>(GEP->getOperand(2));
-                assert(CI != nullptr && "GEP's index is not constant");
-                uint64_t offset = CI->getZExtValue();
-
-                Module* M = GEP->getModule();
-                StructInfo* stInfo = Ctx->structAnalyzer.getStructInfo(stType, M);
-
-                if(!stInfo) break; 
-                for (auto *inst : stInfo->allocaInst) {
-                    if (auto *CI = dyn_cast<CallInst>(inst)) {
-                        retSet.insert(CI);
-                    }
-                }
-                return true;
-            }
-        // }
-        // data from a memory alloc callinst
-        // else if (auto *CI = dyn_cast<CallInst>(V)) {
-        if (auto *CI = dyn_cast<CallInst>(V)) {
-            const Function* callee = CI->getCalledFunction();
-            if (callee != nullptr) {
-                StringRef calleeName = callee->getName();
-                if (calleeName.lower().find("alloc") != string::npos) {
-                    Type *type = callee->getReturnType();
-                    retSet.insert(CI);
-                    return true;
-                }
-                else if (calleeName.lower().find("nla_data") != string::npos) {
-                    Type *type = callee->getReturnType();
-                    retSet.insert(CI);
-                    return true; 
-                }
-            }
-        }
-    }
-    return false;
+    setupBridgeInfo(lenSet, callInst, to, from);
 }
 
 SmallPtrSet<Value *, 16> CopyAnalyzerPass::getAliasSet(Value *V, Function *F){
@@ -774,7 +718,7 @@ void CopyAnalyzerPass::findSources(Value* V, std::vector<llvm::Value *> &srcSet,
     return;
 }
 
-void CopyAnalyzerPass::addCopyInst(StructInfo *stInfo, llvm::CallInst *callInst, 
+void CopyAnalyzerPass::addCopyInfo(StructInfo *stInfo, llvm::CallInst *callInst, 
                         unsigned offset, llvm::Instruction *I, llvm::StructType *st,
                         unsigned argOffset){
 
@@ -793,19 +737,16 @@ void CopyAnalyzerPass::addCopyInst(StructInfo *stInfo, llvm::CallInst *callInst,
 
     KA_LOGS(1, "Add "<<stInfo->name<<" successful\n");
 
-    if(offset == -1)
-        return;
-    
     // add other SiteInfo in the future
     StructInfo::SiteInfo sInfo;
     sInfo.KEY_OFFSET = argOffset;
     sInfo.setSiteInfoValue(argOffset, I);
     sInfo.setSiteInfoSt(argOffset, st);
-    stInfo->addLeakSourceInfo(offset, dyn_cast<Value>(callInst), sInfo);
+    stInfo->addCopySourceInfo(offset, dyn_cast<Value>(callInst), sInfo);
 
 }
 
-void CopyAnalyzerPass::setupPtrInfo(std::vector<Value*> &srcSet, CallInst *callInst, Value *from){
+void CopyAnalyzerPass::setupRouterInfo(std::vector<Value*> &srcSet, CallInst *callInst, Value *from){
     for (std::vector<llvm::Value*>::iterator i = srcSet.begin(), 
          e = srcSet.end(); i != e; i++) { 
         
@@ -849,7 +790,7 @@ void CopyAnalyzerPass::setupPtrInfo(std::vector<Value*> &srcSet, CallInst *callI
                 if (stInfo->fieldAllocGEP.count(GEP->getNumIndices()) == 0) break;
 
                 // we found pointer info
-                addCopyInst(stInfo, callInst, offset, GEP, stType, 0);
+                addCopyInfo(stInfo, callInst, offset, GEP, stType, 0);
 
                 if (!from) break;
                 // let's find source info
@@ -865,7 +806,7 @@ void CopyAnalyzerPass::setupPtrInfo(std::vector<Value*> &srcSet, CallInst *callI
     }
 }
 
-void CopyAnalyzerPass::setupLenInfo(std::vector<Value*> &lenSet, CallInst *callInst,
+void CopyAnalyzerPass::setupBridgeInfo(std::vector<Value*> &lenSet, CallInst *callInst,
     llvm::Value *to, llvm::Value *from){
     for (std::vector<llvm::Value*>::iterator i = lenSet.begin(), 
          e = lenSet.end(); i != e; i++) { 
@@ -910,16 +851,18 @@ void CopyAnalyzerPass::setupLenInfo(std::vector<Value*> &lenSet, CallInst *callI
                 if(!stInfo) break;
 
                 // we found length info
-                addCopyInst(stInfo, callInst, offset, GEP, stType, 2);
-                // let's find source info
+                addCopyInfo(stInfo, callInst, offset, GEP, stType, 2);
+
                 std::vector<Value *> srcFromSet;
                 std::set<Value *> trackedFromSet;
-                if (from) findSources(from, srcFromSet, trackedFromSet);
+                if (from != USER_SPACE)
+                    findSources(from, srcFromSet, trackedFromSet);
                 setupSiteInfo(srcFromSet, stInfo, callInst, offset, 1);
 
                 std::vector<Value *> srcToSet;
                 std::set<Value *> trackedToSet;
-                if (to) findSources(to, srcToSet, trackedToSet);
+                if (to != nullptr)
+                    findSources(to, srcToSet, trackedToSet);
                 setupSiteInfo(srcToSet, stInfo, callInst, offset, 0);
 
                 // next loop
@@ -1172,12 +1115,10 @@ bool CopyAnalyzerPass::doFinalization(Module* M) {
         std::string structName = getScopeName(st, M);
         
         InstMap::iterator liit = Ctx->copyInstMap.find(structName);
-        // XXX 
         // AllocInstMap::iterator aiit = Ctx->allocInstMap.find(structName);
 
-        // either leak or alloc or both
+        // either copy or alloc or both
         if (liit == Ctx->copyInstMap.end() )
-            // XXX    
             //  || aiit == Ctx->allocInstMap.end() )
             Ctx->moduleStructMap[M].erase(st);
     }
@@ -1207,7 +1148,7 @@ bool CopyAnalyzerPass::doFinalization(Module* M) {
     }
 
     KA_LOGS(1, "Building copySyscallMap & allocSyscallMap ...\n");
-    // copySyscallMap: map structName to syscall reaching leak sites
+    // copySyscallMap: map structName to syscall reaching copy sites
     // allocSyscallMap: map structName to syscall reaching allocation sites
     for (StructTypeSet::iterator itr = Ctx->moduleStructMap[M].begin(),
             ite = Ctx->moduleStructMap[M].end(); itr != ite; itr++) {
@@ -1217,7 +1158,7 @@ bool CopyAnalyzerPass::doFinalization(Module* M) {
 
         // copySyscallMap
         // XXX
-        KA_LOGS(1, "Dealing with leaking: " << structName << "\n");
+        KA_LOGS(1, "Dealing with copying: " << structName << "\n");
         InstMap::iterator liit = Ctx->copyInstMap.find(structName);
         SyscallMap::iterator lsit = Ctx->copySyscallMap.find(structName);
         if (liit != Ctx->copyInstMap.end() &&
@@ -1374,7 +1315,7 @@ void CopyAnalyzerPass::dumpSimplifiedKeyStructs(){
             e = Ctx->keyStructMap.end(); it != e; it++ ){
 
         StructInfo *st = it->second;
-        if(st->leakInfo.size() == 0)
+        if(st->copyInfo.size() == 0)
             continue;
         st->dumpSimplified();
     }
@@ -1393,16 +1334,16 @@ void CopyAnalyzerPass::dumpKeyStructs() {
 
         StructInfo *st = it->second;
 
-        if(st->leakInfo.size() == 0)
+        if(st->copyInfo.size() == 0)
             continue;
 
         if(!st->allocaInst.size() || !st->copyInst.size())
             continue;
 
         if(VerboseLevel > 0){
-            st->dumpLeakInfo(false);
+            st->dumpStructInfo(false);
         }else{
-            st->dumpLeakInfo(true);
+            st->dumpStructInfo(true);
         }
         
         // dump syscall info
@@ -1452,33 +1393,7 @@ void CopyAnalyzerPass::dumpKeyStructs() {
     }
 
     unsigned cnt = 0;
-    RES_REPORT("\n=========  printing moduleStructMap ==========\n");
-    for (ModuleStructMap::iterator i = Ctx->moduleStructMap.begin(),
-            e = Ctx->moduleStructMap.end(); i != e; i++) {
-
-        Module* M = i->first;
-        StructTypeSet &stSet = i->second;
-
-        RES_REPORT("[+] " << M->getModuleIdentifier() << "\n");
-
-        for (StructType* st : stSet) {
-            RES_REPORT(getScopeName(st, M) << "\n");
-            const StructInfo* stInfo = Ctx->structAnalyzer.getStructInfo(st, M);
-            RES_REPORT("Offset by Flexible: ");
-            for (auto offset : stInfo->lenOffsetByFlexible)
-                RES_REPORT(offset << ", ");
-            RES_REPORT("\n");
-
-            RES_REPORT("Offset by Leakable: ");
-            for (auto offset : stInfo->lenOffsetByLeakable)
-                RES_REPORT(offset << ", ");
-            RES_REPORT("\n");
-        }
-    } 
-    RES_REPORT("======= end printting moduleStructMap =========\n");
-
     RES_REPORT("\n=========  printing structModuleMap ==========\n");
-    cnt = 0;
     for (StructModuleMap::iterator i = Ctx->structModuleMap.begin(), 
             e = Ctx->structModuleMap.end(); i != e; i++, cnt++) {
 
@@ -1586,7 +1501,7 @@ void CopyAnalyzerPass::dumpKeyStructs() {
             RES_REPORT(F->getName() << "\n");
         */
 
-        RES_REPORT("<<<<<<<<<<<<<< Leaking <<<<<<<<<<<\n");
+        RES_REPORT("<<<<<<<<<<<<<< Copying <<<<<<<<<<<\n");
 
         for (auto F : lsit->second)
             RES_REPORT(F->getName() << "\n");
