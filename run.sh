@@ -7,10 +7,14 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 HOME=$(pwd)
+KERNEL_SRC="$HOME/linux"
+IDENT_SRC="$HOME/identifier"
 
 run_identifier() {
     echo -e "${BLUE}==> Running identifier tool...${NC}"
-    # TODO:
+    # TODO: finish this cmd
+    mkdir dump
+    $IDENT_SRC/build/lib/identifier -debug-verbose 0 -dump-keystructs -output-dir $HOME/dump/ `find ${KERNEL_SRC} -name "*\.bc"`
     echo -e "${GREEN}Identifier tool execution completed.${NC}"
 }
 
