@@ -13,7 +13,7 @@ IDENT_SRC="$HOME/identifier"
 run_identifier() {
     echo -e "${BLUE}==> Running identifier tool...${NC}"
     mkdir dump
-    $IDENT_SRC/build/lib/identifier -debug-verbose 0 -dump-keystructs -output-dir $HOME/dump/ `find ${KERNEL_SRC} -name "*\.bc"`
+    $IDENT_SRC/build/lib/identifier -debug-verbose 0 -dump-keystructs -output-dir $HOME/dump/ `find ${KERNEL_SRC} -name "*\.c\.bc"`
     echo -e "${GREEN}Identifier tool execution completed.${NC}"
 }
 
