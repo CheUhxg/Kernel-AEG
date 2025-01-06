@@ -47,8 +47,8 @@ build_linux() {
     fi
 
     cd $KERNEL_SRC
-    make menuconfig LLVM=1 bzÎmage
-    make LLVM=1 -j`nproc` 2> err
+    make menuconfig LLVM=1
+    make LLVM=1 -j`nproc` bzImage 2> err
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}Kernel build completed successfully!${NC}"
     else
