@@ -18,9 +18,6 @@ install_llvm() {
     else
         git clone -b release/14.x https://github.com/llvm/llvm-project.git
         cd $LLVM_SRC
-        echo -e "${YELLOW}Applying patch...${NC}"
-        cp $HOME/tools/llvm-caplog.patch .
-        git apply llvm-caplog.patch
 
         echo -e "${GREEN}Configuring LLVM...${NC}"
         cmake -S llvm -B build -G "Unix Makefiles" -DLLVM_ENABLE_PROJECTS="clang;lld"

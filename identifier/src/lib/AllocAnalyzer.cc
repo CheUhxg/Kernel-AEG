@@ -287,8 +287,10 @@ void AllocAnalyzerPass::analyzeAlloc(llvm::CallInst* callInst) {
             }
             if (auto GEP = dyn_cast<GetElementPtrInst>(Op1)) {
                 fromGEP = GEP;
-                auto CSI = dyn_cast<ConstantInt>(getOffset(fromGEP));
-                fromOffset = CSI->getZExtValue();
+                if (auto CSI = dyn_cast<ConstantInt>(getOffset(fromGEP)))
+                    fromOffset = CSI->getZExtValue();
+                else
+                    continue;
 
                 stType = dyn_cast<StructType>(fromGEP->getSourceElementType());
                 if (stType)

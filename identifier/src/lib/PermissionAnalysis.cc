@@ -52,6 +52,7 @@ bool PermissionAnalysisPass::checkDevicePermission(User *Ini) {
 		bool deny = false;
         bool dev = false;
         if (auto *ST = dyn_cast<StructType>(U->getType())) {
+            if (ST->isLiteral()) continue;
             if (ST->getName().find("struct.cdevsw") == 0) {
                 for (auto *user : U->users()) {
                     for (auto *uu : user->users()) {

@@ -481,7 +481,8 @@ SmallPtrSet<Value *, 16> CopyAnalyzerPass::getAliasSet(Value *V, Function *F){
 
 void CopyAnalyzerPass::findSources(Value* V, std::vector<llvm::Value *> &srcSet, std::set<llvm::Value* > &trackedSet) {
 
-    if (trackedSet.count(V) != 0
+    if (V == nullptr ||
+        trackedSet.count(V) != 0
         //  || trackedSet.size() >= 8000
         )
         return;

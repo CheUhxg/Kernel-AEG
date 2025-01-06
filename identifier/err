@@ -1,0 +1,139 @@
+Total 1 file(s)
+[0] /home/walle/Projects/Kernel-AEG/linux/mm/memblock.c.bc
+[CallGraph] Initializing 1 modules.
+[/home/walle/Projects/Kernel-AEG/linux/mm/memblock.c.bc]
+[+] Initializing /home/walle/Projects/Kernel-AEG/linux/mm/memblock.c.bc
+[CallGraph] Processing 1 modules.
+[CallGraph / 1] [/home/walle/Projects/Kernel-AEG/linux/mm/memblock.c.bc]
+
+[CallGraph] Updated in 0 modules.
+[CallGraph] Finalizing 1 modules.
+[CallGraph] Done!
+
+[PointerAnalysis] Initializing 1 modules.
+[/home/walle/Projects/Kernel-AEG/linux/mm/memblock.c.bc]
+[PointerAnalysis] Processing 1 modules.
+[PointerAnalysis / 1] [/home/walle/Projects/Kernel-AEG/linux/mm/memblock.c.bc]
+
+[PointerAnalysis] Updated in 0 modules.
+[PointerAnalysis] Finalizing 1 modules.
+[PointerAnalysis] Done!
+
+[PermissionAnalysisPass] Initializing 1 modules.
+[/home/walle/Projects/Kernel-AEG/linux/mm/memblock.c.bc]
+[PermissionAnalysisPass] Processing 1 modules.
+[PermissionAnalysisPass / 1] [/home/walle/Projects/Kernel-AEG/linux/mm/memblock.c.bc]
+
+[PermissionAnalysisPass] Updated in 0 modules.
+[PermissionAnalysisPass] Finalizing 1 modules.
+[PermissionAnalysisPass] Done!
+
+[AllocAnalyzer] Initializing 1 modules.
+[/home/walle/Projects/Kernel-AEG/linux/mm/memblock.c.bc]
+[AllocAnalyzer] Processing 1 modules.
+[AllocAnalyzer / 1] [/home/walle/Projects/Kernel-AEG/linux/mm/memblock.c.bc]
+We found struct.memblock_type
+[ALLOC] struct.memblock_type.3>mm/memblock.c:448
+/home/walle/Projects/Kernel-AEG/linux/mm/memblock.c.bc:memblock_double_array
+  %call16 = call fastcc noalias i8* @kmalloc(i64 noundef %shl, i32 noundef 3264) #27, !dbg !6558
+
+[AllocAnalyzer] Updated in 0 modules.
+[AllocAnalyzer] Finalizing 1 modules.
+[Finalize] /home/walle/Projects/Kernel-AEG/linux/mm/memblock.c.bc
+Building moduleStructMap ...
+Actually no flexible structure in this module
+[AllocAnalyzer] Done!
+
+[CopyAnalyzer] Initializing 1 modules.
+[/home/walle/Projects/Kernel-AEG/linux/mm/memblock.c.bc]
+[CopyAnalyzer] Processing 1 modules.
+[CopyAnalyzer / 1] [/home/walle/Projects/Kernel-AEG/linux/mm/memblock.c.bc]
+FindSource: resolved an alias :   %13 = load i64, i64* %cnt, align 8, !dbg !6588 ==   store i64 %dec, i64* %cnt, align 8, !dbg !6606
+FindSource: resolved an alias :   %25 = load i64, i64* %cnt, align 8, !dbg !6606 ==   store i64 %dec, i64* %cnt, align 8, !dbg !6606
+Here may contain an alias, please check this
+FindSource: resolved an alias :   %3 = load i64, i64* %cnt, align 8, !dbg !6543 ==   store i64 1, i64* %cnt, align 8, !dbg !6572
+FindSource: resolved an alias :   %3 = load i64, i64* %cnt, align 8, !dbg !6543 ==   store i64 %dec, i64* %cnt, align 8, !dbg !6562
+FindSource: resolved an alias :   %19 = load i64, i64* %cnt, align 8, !dbg !6562 ==   store i64 1, i64* %cnt, align 8, !dbg !6572
+FindSource: resolved an alias :   %19 = load i64, i64* %cnt, align 8, !dbg !6562 ==   store i64 %dec, i64* %cnt, align 8, !dbg !6562
+Here may contain an alias, please check this
+FindSource: resolved an alias :   %1 = load i64, i64* %cnt, align 8, !dbg !6541 ==   store i64 %inc, i64* %cnt, align 8, !dbg !6576
+FindSource: resolved an alias :   %15 = load i64, i64* %cnt, align 8, !dbg !6576 ==   store i64 %inc, i64* %cnt, align 8, !dbg !6576
+Here may contain an alias, please check this
+FindSource: resolved an alias :   %3 = load i64, i64* %max, align 8, !dbg !6547 ==   store i64 %shl175, i64* %max, align 8, !dbg !6622
+FindSource: resolved an alias :   %38 = load i64, i64* %max, align 8, !dbg !6622 ==   store i64 %shl175, i64* %max, align 8, !dbg !6622
+Here may contain an alias, please check this
+FindSource: resolved an alias :   %8 = load i64, i64* %addr, align 8, !dbg !6579 ==   store i64 %call39, i64* %addr, align 8, !dbg !6577
+Starting interprocedural analysis for memblock_find_in_range
+Starting interprocedural analysis for memblock_find_in_range_node
+Starting interprocedural analysis for __memblock_find_range_bottom_up
+FindSource: resolved an alias :   %6 = load i64, i64* %this_start, align 8, !dbg !6579 ==   store i64 %cond7, i64* %this_start, align 8, !dbg !6575
+FindSource: resolved an alias :   %4 = load i64, i64* %this_start, align 8, !dbg !6573 ==   store i64 %cond7, i64* %this_start, align 8, !dbg !6575
+Starting interprocedural analysis for __memblock_find_range_top_down
+FindSource: resolved an alias :   %5 = load i64, i64* %this_end, align 8, !dbg !6576 ==   store i64 %cond19, i64* %this_end, align 8, !dbg !6578
+FindSource: resolved an alias :   %8 = load i64, i64* %addr, align 8, !dbg !6579 ==   store i64 %call27, i64* %addr, align 8, !dbg !6571
+Starting interprocedural analysis for memblock_find_in_range
+FindSource: resolved an alias :   %8 = load i64, i64* %addr, align 8, !dbg !6579 ==   store i64 %cond, i64* %addr, align 8, !dbg !6562
+Starting interprocedural analysis for __phys_addr_nodebug
+[AI ]   %this_start = alloca i64, align 8
+----- Tracing Len --------
+FindSource: resolved an alias :   %3 = load i64, i64* %max, align 8, !dbg !6547 ==   store i64 %shl175, i64* %max, align 8, !dbg !6622
+FindSource: resolved an alias :   %38 = load i64, i64* %max, align 8, !dbg !6622 ==   store i64 %shl175, i64* %max, align 8, !dbg !6622
+Here may contain an alias, please check this
+----- Setup SiteInfo Length -------
+[Load]   %3 = load i64, i64* %max, align 8, !dbg !6547
+[GEP]   %max = getelementptr inbounds %struct.memblock_type, %struct.memblock_type* %type, i32 0, i32 1, !dbg !6547
+FindSource: resolved an alias :   %30 = load %struct.memblock_region*, %struct.memblock_region** %regions, align 8, !dbg !6599 ==   store %struct.memblock_region* %new_array.0, %struct.memblock_region** %regions, align 8, !dbg !6621
+FindSource: resolved an alias :   %8 = load i64, i64* %addr, align 8, !dbg !6579 ==   store i64 %call39, i64* %addr, align 8, !dbg !6577
+Starting interprocedural analysis for memblock_find_in_range
+Starting interprocedural analysis for memblock_find_in_range_node
+Starting interprocedural analysis for __memblock_find_range_bottom_up
+FindSource: resolved an alias :   %6 = load i64, i64* %this_start, align 8, !dbg !6579 ==   store i64 %cond7, i64* %this_start, align 8, !dbg !6575
+FindSource: resolved an alias :   %4 = load i64, i64* %this_start, align 8, !dbg !6573 ==   store i64 %cond7, i64* %this_start, align 8, !dbg !6575
+Starting interprocedural analysis for __memblock_find_range_top_down
+FindSource: resolved an alias :   %5 = load i64, i64* %this_end, align 8, !dbg !6576 ==   store i64 %cond19, i64* %this_end, align 8, !dbg !6578
+FindSource: resolved an alias :   %8 = load i64, i64* %addr, align 8, !dbg !6579 ==   store i64 %call27, i64* %addr, align 8, !dbg !6571
+Starting interprocedural analysis for memblock_find_in_range
+FindSource: resolved an alias :   %8 = load i64, i64* %addr, align 8, !dbg !6579 ==   store i64 %cond, i64* %addr, align 8, !dbg !6562
+Starting interprocedural analysis for __phys_addr_nodebug
+Here may contain an alias, please check this
+[AI ]   %this_start = alloca i64, align 8
+FindSource: resolved an alias :   %8 = load i64, i64* %addr, align 8, !dbg !6579 ==   store i64 %call39, i64* %addr, align 8, !dbg !6577
+Starting interprocedural analysis for memblock_find_in_range
+Starting interprocedural analysis for memblock_find_in_range_node
+Starting interprocedural analysis for __memblock_find_range_bottom_up
+FindSource: resolved an alias :   %6 = load i64, i64* %this_start, align 8, !dbg !6579 ==   store i64 %cond7, i64* %this_start, align 8, !dbg !6575
+FindSource: resolved an alias :   %4 = load i64, i64* %this_start, align 8, !dbg !6573 ==   store i64 %cond7, i64* %this_start, align 8, !dbg !6575
+Starting interprocedural analysis for __memblock_find_range_top_down
+FindSource: resolved an alias :   %5 = load i64, i64* %this_end, align 8, !dbg !6576 ==   store i64 %cond19, i64* %this_end, align 8, !dbg !6578
+FindSource: resolved an alias :   %8 = load i64, i64* %addr, align 8, !dbg !6579 ==   store i64 %call27, i64* %addr, align 8, !dbg !6571
+Starting interprocedural analysis for memblock_find_in_range
+FindSource: resolved an alias :   %8 = load i64, i64* %addr, align 8, !dbg !6579 ==   store i64 %cond, i64* %addr, align 8, !dbg !6562
+Starting interprocedural analysis for __phys_addr_nodebug
+[AI ]   %this_start = alloca i64, align 8
+[Load]   %38 = load i64, i64* %max, align 8, !dbg !6622
+[GEP]   %max = getelementptr inbounds %struct.memblock_type, %struct.memblock_type* %type, i32 0, i32 1, !dbg !6547
+
+[CopyAnalyzer] Updated in 0 modules.
+[CopyAnalyzer] Finalizing 1 modules.
+[Finalize] /home/walle/Projects/Kernel-AEG/linux/mm/memblock.c.bc
+No flexible structure in this module
+[CopyAnalyzer] Done!
+
+
+=========  printing KeyStructMap ==========
+======= end printting KeyStructMap =========
+
+=========  printing structModuleMap ==========
+====== end printing structModuleMap ==========
+
+=========  printing copyInstMap ==========
+====== end printing copyInstMap ==========
+
+=========  printing allocInstMap ==========
+====== end printing allocInstMap ==========
+
+=========  printing keyStructList ==========
+====== end printing keyStructList ==========
+
+========= printing allocSyscallMap & copySyscallMap ==========
+======== end printing allocSyscallMap & copySyscallMap =======
