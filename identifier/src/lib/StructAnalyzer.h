@@ -409,7 +409,11 @@ public:
 		jsonStream.flush();
 
 		error_code EC;
-		llvm::raw_fd_ostream fileOutput(OutputDir+name+".json", EC);
+		std::string fileName = OutputDir;
+		if (OutputDir[OutputDir.size()-1] != '/')
+			fileName += '/';
+		fileName.append(name+".json");
+		llvm::raw_fd_ostream fileOutput(fileName, EC);
     	fileOutput << jsonString;
 		fileOutput.flush();
 	}
