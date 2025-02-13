@@ -23,8 +23,12 @@
 
 #include "CallGraph.h"
 #include "Annotation.h"
+#include "GlobalCtx.h"
 #include "llvm/IR/Constant.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/Instruction.h"
+#include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
@@ -402,6 +406,47 @@ bool CallGraphPass::runOnFunction(Function *F) {
             }
         }
 #endif
+        else if (BitCastInst *BCI = dyn_cast<BitCastInst>(I)) {
+            Type *srcTy = BCI->getSrcTy();
+            Type *dstTy = BCI->getDestTy();
+            if (!srcTy->isPointerTy() || !dstTy->isPointerTy())
+                continue;
+
+            srcTy = srcTy->getPointerElementType();
+            dstTy = dstTy->getPointerElementType();
+            if (!srcTy->isStructTy() || !dstTy->isPointerTy())
+                continue;
+            
+            dstTy = dstTy->getPointerElementType();
+            if (!dstTy->isFunctionTy())
+                continue;
+
+            FunctionType *funcTy = dyn_cast<FunctionType>(dstTy);
+            if (!funcTy)
+                continue;
+
+            // handle security hook
+            // TODO: finish all hooks
+            if (srcTy->getStructName().equals("union.security_list_options")) {
+                FunctionType *FT = F->getFunctionType();
+                std::string FuncType;
+                llvm::raw_string_ostream OS(FuncType);
+                FT->print(OS);
+
+                FuncSet &FS = Ctx->HookCallees[FuncType];
+                StringRef FuncName = F->getName();
+                for (auto callee : FS) {
+                    if (!FuncName.contains(callee->getName().substr(8))) // get rid of "selinux_"
+                        continue;
+                    while (!dyn_cast<CallInst>(I))
+                        I = I->getNextNode();
+                    CallInst *CI = dyn_cast<CallInst>(I);
+                    FuncSet &FS = Ctx->Callees[CI];
+                    FS.insert(callee);
+                    break;
+                }
+            }
+        }
     }
 
     return Changed;
@@ -498,6 +543,8 @@ bool CallGraphPass::doFinalization(Module *M) {
                 // calculate the caller info here
                 for (Function *CF : FS) {
                     CallInstSet &CIS = Ctx->Callers[CF];
+                    std::string CFName = CF->getName().str();
+                    Ctx->Name2Func[CFName].insert(CF);
                     CIS.insert(CI);
                 }
             }
@@ -509,6 +556,32 @@ bool CallGraphPass::doFinalization(Module *M) {
 
 bool CallGraphPass::doModulePass(Module *M) {
     bool Changed = true, ret = false;
+
+    for (GlobalVariable &GV : M->globals()) {
+        if (GV.getName() == "selinux_hooks") {
+            if (ConstantStruct *CS = dyn_cast<ConstantStruct>(GV.getInitializer())) {
+                for (int i = 0; i < CS->getNumOperands(); ++i) {
+                    Constant *ThirdMember = CS->getOperand(i);
+                    if (ConstantStruct *InnerStruct = dyn_cast<ConstantStruct>(ThirdMember)) {
+                        Constant *FuncPtr = InnerStruct->getOperand(2);
+                        if (ConstantStruct *CSV = dyn_cast<ConstantStruct>(FuncPtr)) {
+                            if (Function *F = dyn_cast<Function>(CSV->getOperand(0))) {
+                                FunctionType *FT = F->getFunctionType();
+                                std::string FuncType;
+                                llvm::raw_string_ostream OS(FuncType);
+                                F->getFunctionType()->print(OS);
+
+                                FuncSet &FS = Ctx->HookCallees[FuncType];
+                                FS.insert(F);
+                            }
+                        }
+                    }
+                }
+            }
+            break;
+        }
+    }
+
     while (Changed) {
         Changed = false;
         for (Function &F : *M)
@@ -591,7 +664,8 @@ void CallGraphPass::dumpCallers() {
     for (auto M : Ctx->Callers) {
         Function *F = M.first;
         CallInstSet &CIS = M.second;
-        RES_REPORT("F : " << getScopeName(F) << "\n");
+        RES_REPORT("F : " << getScopeName(F)
+            << ":" << F << "\n");
 
         for (CallInst *CI : CIS) {
             Function *CallerF = CI->getParent()->getParent();

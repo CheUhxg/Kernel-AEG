@@ -249,11 +249,11 @@ void AllocAnalyzerPass::forwardAnalysis(llvm::Value *V,
 // update allocSyscallMap
 void AllocAnalyzerPass::analyzeAlloc(llvm::CallInst* callInst) {
 
-    StructType* stType;
+    StructType* stType = nullptr;
     Function *F;
     Module *M;
-    GetElementPtrInst *fromGEP = nullptr;
-    unsigned fromOffset;
+    unsigned fromOffset = -1;
+    bool isOrigin = false;
 
     M = callInst->getModule();
     F = callInst->getCalledFunction();
@@ -267,35 +267,50 @@ void AllocAnalyzerPass::analyzeAlloc(llvm::CallInst* callInst) {
     if (F) {
         Type *baseType = F->getReturnType();
         stType = dyn_cast<StructType>(baseType);
+        if (!stType) {
+            for (auto user : callInst->users()) {
+                if (auto BCI = dyn_cast<BitCastInst>(user)) {
+                    if (auto pointType = dyn_cast<PointerType>(BCI->getDestTy())) {
+                        stType = dyn_cast<StructType>(pointType->getPointerElementType());
+                        if (stType) break;
+                    }
+                }
+            }
+        }
     }
 
-    if (!stType) {
-        std::set<llvm::StoreInst *> storeInstSet;
-        std::set<llvm::Value *> trackSet;
-        forwardAnalysis(callInst, storeInstSet, trackSet);
+    if (stType)
+        isOrigin = true;
 
-        for (auto SI : storeInstSet) {
-            Value *Op0 = SI->getOperand(0);
-            Value *Op1 = SI->getOperand(1);
-            if (auto BCI = dyn_cast<BitCastInst>(Op0)) {
-                PointerType *ptrTy = dyn_cast<PointerType>(BCI->getDestTy());
-                if (!ptrTy)
-                    continue;
-                stType = dyn_cast<StructType>(ptrTy->getPointerElementType());
-                if (stType)
-                    break;
-            }
-            if (auto GEP = dyn_cast<GetElementPtrInst>(Op1)) {
-                fromGEP = GEP;
-                if (auto CSI = dyn_cast<ConstantInt>(getOffset(fromGEP)))
-                    fromOffset = CSI->getZExtValue();
-                else
-                    continue;
+    std::set<llvm::StoreInst *> storeInstSet;
+    std::set<llvm::Value *> trackSet;
+    forwardAnalysis(callInst, storeInstSet, trackSet);
 
-                stType = dyn_cast<StructType>(fromGEP->getSourceElementType());
-                if (stType)
-                    break;
-            }
+    for (auto SI : storeInstSet) {
+        Value *Op0 = SI->getOperand(0);
+        Value *Op1 = SI->getOperand(1);
+        if (auto BCI = dyn_cast<BitCastInst>(Op0)) {
+            PointerType *ptrTy = dyn_cast<PointerType>(BCI->getDestTy());
+            if (!ptrTy || isOrigin)
+                continue;
+            stType = dyn_cast<StructType>(ptrTy->getPointerElementType());
+            if (stType)
+                break;
+        }
+        else if (auto CSI = dyn_cast<ConstantInt>(Op0)) {
+            continue;
+        }
+        else if (auto GEP = dyn_cast<GetElementPtrInst>(Op1)) {
+            if (auto CSI = dyn_cast<ConstantInt>(getOffset(GEP)))
+                fromOffset = CSI->getZExtValue();
+            else
+                continue;
+
+            stType = dyn_cast<StructType>(GEP->getSourceElementType());
+            if (stType)
+                break;
+            else
+                fromOffset = -1;
         }
     }
 
@@ -310,9 +325,14 @@ void AllocAnalyzerPass::analyzeAlloc(llvm::CallInst* callInst) {
     if (structName.find("struct") == string::npos)
         return;
 
-    if (fromGEP)
+    if (isOrigin) {
+        KA_LOGS(0, "[ALLOC] " << structName << ">");
+        DEBUG_Inst(0, callInst); 
+    }
+
+    if (fromOffset != -1)
         KA_LOGS(0, "[ALLOC] " << structName + "." + to_string(fromOffset) << ">");
-    else
+    else if (!isOrigin)
         KA_LOGS(0, "[ALLOC] " << structName << ">");
     DEBUG_Inst(0, callInst);
 
@@ -326,13 +346,13 @@ void AllocAnalyzerPass::analyzeAlloc(llvm::CallInst* callInst) {
     if (it != Ctx->keyStructMap.end()) {
 
         it->second->allocaInst.insert(callInst);
-        if (fromGEP) it->second->fieldAllocGEP.insert(fromOffset);
+        if (fromOffset != -1) it->second->fieldAllocGEP.insert(fromOffset);
 
     } else {
         StructInfo *stInfo = Ctx->structAnalyzer.getStructInfo(stType, M);
         if (!stInfo) return;
         stInfo->allocaInst.insert(callInst);
-        if (fromGEP) stInfo->fieldAllocGEP.insert(fromOffset);
+        if (fromOffset != -1) stInfo->fieldAllocGEP.insert(fromOffset);
         Ctx->keyStructMap.insert(std::make_pair(structName, stInfo));
     }
 }
@@ -514,17 +534,31 @@ FuncSet AllocAnalyzerPass::reachableSyscall(llvm::Function* F) {
 
         if(reachableSyscallCache.find(F) != reachableSyscallCache.end()){
             FuncSet RS = getSyscalls(F);
-            for(auto *RF : RS){
-                reachableFuncs.insert(RF);
+            if (!RS.empty()) {
+                for(auto *RF : RS){
+                    reachableFuncs.insert(RF);
+                }
+                continue;
             }
-            continue;
         }
 
         CallerMap::iterator it = Ctx->Callers.find(F);
         if (it != Ctx->Callers.end()) {
             for (auto calleeInst: it->second) {
-                Function* F = calleeInst->getParent()->getParent();
+                Function* F = calleeInst->getFunction();
                 workList.push_back(F);
+            }
+        }
+        else {
+            FuncSet &FS = Ctx->Name2Func[F->getName().str()];
+            for (auto RF : FS) {
+                it = Ctx->Callers.find(RF);
+                if (it != Ctx->Callers.end()) {
+                    for (auto calleeInst: it->second) {
+                        Function* F = calleeInst->getFunction();
+                        workList.push_back(F);
+                    }
+                }
             }
         }
     }

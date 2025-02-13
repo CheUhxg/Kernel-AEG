@@ -1266,17 +1266,31 @@ FuncSet CopyAnalyzerPass::reachableSyscall(llvm::Function* F) {
 
         if(reachableSyscallCache.find(F) != reachableSyscallCache.end()){
             FuncSet RS = getSyscalls(F);
-            for(auto *RF : RS){
-                reachableFuncs.insert(RF);
+            if (!RS.empty()) {
+                for(auto *RF : RS){
+                    reachableFuncs.insert(RF);
+                }
+                continue;
             }
-            continue;
         }
 
         CallerMap::iterator it = Ctx->Callers.find(F);
         if (it != Ctx->Callers.end()) {
             for (auto calleeInst: it->second) {
-                Function* F = calleeInst->getParent()->getParent();
+                Function* F = calleeInst->getFunction();
                 workList.push_back(F);
+            }
+        }
+        else {
+            FuncSet &FS = Ctx->Name2Func[F->getName().str()];
+            for (auto RF : FS) {
+                it = Ctx->Callers.find(RF);
+                if (it != Ctx->Callers.end()) {
+                    for (auto calleeInst: it->second) {
+                        Function* F = calleeInst->getFunction();
+                        workList.push_back(F);
+                    }
+                }
             }
         }
     }

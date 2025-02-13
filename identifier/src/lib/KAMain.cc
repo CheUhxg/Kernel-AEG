@@ -198,6 +198,7 @@ int main(int argc, char **argv) {
 
     CallGraphPass CGPass(&GlobalCtx);
     CGPass.run(GlobalCtx.Modules);
+    // CGPass.dumpCallers();
 
     PointerAnalysisPass PAPass(&GlobalCtx);
     PAPass.run(GlobalCtx.Modules);
@@ -222,11 +223,6 @@ int main(int argc, char **argv) {
         StructCheckerPass LCPass(&GlobalCtx);
         LCPass.run(GlobalCtx.Modules);
         LCPass.dumpChecks();
-    }
-
-    if (DumpSimplified) {
-        AllocAnalyzerPass AAPass(&GlobalCtx);
-        AAPass.run(GlobalCtx.Modules);
     }
 
     if (DumpFlexibleStruts) {

@@ -23,6 +23,7 @@
 
 #include "Common.h"
 #include "StructAnalyzer.h"
+#include "llvm/IR/DerivedTypes.h"
 
 using namespace llvm;
 using namespace std;
@@ -39,6 +40,7 @@ typedef llvm::SmallPtrSet<llvm::Function*, 32> FuncSet;
 typedef std::unordered_map<std::string, FuncSet> FuncPtrMap;
 typedef llvm::DenseMap<llvm::Function*, CallInstSet> CallerMap;
 typedef llvm::DenseMap<llvm::CallInst*, FuncSet> CalleeMap;
+typedef unordered_map<std::string, FuncSet> HookMap;
 /****************** end Call Graph **************/
 
 /****************** Alias **************/
@@ -114,8 +116,13 @@ public:
   // Map a callsite to all potential callee functions.
   CalleeMap Callees;
 
+  unordered_map<std::string, FuncSet> Name2Func;
+
   // Map a function to all potential caller instructions.
   CallerMap Callers;
+
+  // Map a function name to a set of hook functions.
+  HookMap HookCallees;
 
   // Indirect call instructions
   std::vector<CallInst *>IndirectCallInsts;
